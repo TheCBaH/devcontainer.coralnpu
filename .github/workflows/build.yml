@@ -1,0 +1,223 @@
+name: build
+on:
+  push:
+    branches: [main, devel]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      x86_only:
+        description: 'Validate x86_64 changes without rebuilding the ARM64 tool image'
+        type: boolean
+        default: false
+  workflow_call:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: build-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: true
+jobs:
+  fixtures:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Initialize source
+        run: make submodule
+      - name: Free runner disk
+        run: |
+          sudo find /usr/local/lib/android /usr/share/dotnet /opt/ghc -depth -delete 2>/dev/null || true
+          df -h
+      - name: Development container
+        id: container
+        uses: TheCBaH/devcontainer-action/devcontainer@v1
+        with:
+          cli-version: '0.88.0'
+          username: ${{ github.event_name != 'pull_request' && github.actor || '' }}
+          password: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
+      - name: Set command prefix
+        run: echo 'EXEC=${{ steps.container.outputs.exec }}' >> "$GITHUB_ENV"
+      - name: Cache Bazel inputs and actions
+        id: bazel-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache/repos
+            .cache/actions
+          key: fixture-x86_64-${{ hashFiles('coralnpu/rules/repo_defs.bzl', '.devcontainer/**') }}
+          restore-keys: fixture-x86_64-
+      - name: Build guest fixtures
+        run: $EXEC make fixtures
+      - name: Upload guest fixtures
+        uses: actions/upload-artifact@v4
+        with:
+          name: guest-fixtures
+          path: fixtures/*.elf
+          if-no-files-found: error
+      - name: Save Bazel cache
+        if: always() && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache/repos
+            .cache/actions
+          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}
+  x86_64:
+    needs: fixtures
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Initialize source
+        run: make submodule
+      - name: Free runner disk
+        run: |
+          sudo find /usr/local/lib/android /usr/share/dotnet /opt/ghc -depth -delete 2>/dev/null || true
+          df -h
+      - name: Development container
+        id: container
+        uses: TheCBaH/devcontainer-action/devcontainer@v1
+        with:
+          cli-version: '0.88.0'
+          username: ${{ github.event_name != 'pull_request' && github.actor || '' }}
+          password: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
+      - name: Set command prefix
+        run: echo 'EXEC=${{ steps.container.outputs.exec }}' >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          name: guest-fixtures
+          path: fixtures
+      - name: Cache Bazel inputs and actions
+        id: bazel-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache/repos
+            .cache/actions
+          key: bazel-x86_64-${{ hashFiles('.gitmodules', 'patches/**', '.devcontainer/**', 'scripts/**', 'fixtures/**') }}-${{ github.sha }}
+          restore-keys: bazel-x86_64-
+      - name: Build and package emulators
+        run: $EXEC make package
+      - name: Test external archives
+        run: make test
+      - name: Upload verified emulators
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulators-x86_64
+          path: dist/*
+          if-no-files-found: error
+      - name: Preserve failed archives
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-x86_64
+          path: dist/*
+          if-no-files-found: ignore
+      - name: Save Bazel cache
+        if: always() && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache/repos
+            .cache/actions
+          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}
+      - name: Disk usage
+        if: always()
+        run: df -h
+  arm-image:
+    if: ${{ !inputs.x86_only }}
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Initialize source
+        run: make submodule
+      - name: Free runner disk
+        run: |
+          sudo find /usr/local/lib/android /usr/share/dotnet /opt/ghc -depth -delete 2>/dev/null || true
+          df -h
+      - name: Development container
+        id: container
+        uses: TheCBaH/devcontainer-action/devcontainer@v1
+        with:
+          cli-version: '0.88.0'
+          username: ${{ github.event_name != 'pull_request' && github.actor || '' }}
+          password: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
+      - name: Set command prefix
+        run: echo 'EXEC=${{ steps.container.outputs.exec }}' >> "$GITHUB_ENV"
+      - name: Check native tools
+        run: $EXEC bash -c 'test "$(uname -m)" = aarch64; firtool --version; clang --version'
+  aarch64:
+    needs: [arm-image, fixtures]
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Initialize source
+        run: make submodule
+      - name: Free runner disk
+        run: |
+          sudo find /usr/local/lib/android /usr/share/dotnet /opt/ghc -depth -delete 2>/dev/null || true
+          df -h
+      - name: Development container
+        id: container
+        uses: TheCBaH/devcontainer-action/devcontainer@v1
+        with:
+          cli-version: '0.88.0'
+          username: ${{ github.event_name != 'pull_request' && github.actor || '' }}
+          password: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
+      - name: Set command prefix
+        run: echo 'EXEC=${{ steps.container.outputs.exec }}' >> "$GITHUB_ENV"
+      - uses: actions/download-artifact@v4
+        with:
+          name: guest-fixtures
+          path: fixtures
+      - name: Cache Bazel inputs and actions
+        id: bazel-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            .cache/repos
+            .cache/actions
+          key: bazel-aarch64-${{ hashFiles('.gitmodules', 'patches/**', '.devcontainer/**', 'scripts/**') }}-${{ github.sha }}
+          restore-keys: bazel-aarch64-
+      - name: Build and package emulators
+        run: $EXEC make package
+      - name: Test external archives
+        run: make test
+      - name: Upload verified emulators
+        uses: actions/upload-artifact@v4
+        with:
+          name: emulators-aarch64
+          path: dist/*
+          if-no-files-found: error
+      - name: Preserve failed archives
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-aarch64
+          path: dist/*
+          if-no-files-found: ignore
+      - name: Save Bazel cache
+        if: always() && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            .cache/repos
+            .cache/actions
+          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}
+      - name: Disk usage
+        if: always()
+        run: df -h

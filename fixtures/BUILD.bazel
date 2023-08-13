@@ -1,0 +1,16 @@
+load("//rules:coralnpu_v2.bzl", "coralnpu_v2_binary")
+coralnpu_v2_binary(
+    name = "scalar",
+    srcs = ["scalar.cc"],
+    copts = ["-march=rv32imf_zicsr_zifencei_zbb"],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+)
+coralnpu_v2_binary(
+    name = "rvv",
+    srcs = ["rvv.cc"],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+)
