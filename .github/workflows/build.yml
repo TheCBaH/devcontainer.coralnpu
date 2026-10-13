@@ -52,7 +52,7 @@ jobs:
       - name: Build guest fixtures
         run: $EXEC make fixtures
       - name: Upload guest fixtures
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: guest-fixtures
           path: fixtures/*.elf
@@ -107,14 +107,14 @@ jobs:
       - name: Test external archives
         run: make test
       - name: Upload verified emulators
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: emulators-x86_64
           path: dist/*
           if-no-files-found: error
       - name: Preserve failed archives
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: diagnostics-x86_64
           path: dist/*
@@ -198,14 +198,14 @@ jobs:
       - name: Test external archives
         run: make test
       - name: Upload verified emulators
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: emulators-aarch64
           path: dist/*
           if-no-files-found: error
       - name: Preserve failed archives
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: diagnostics-aarch64
           path: dist/*
