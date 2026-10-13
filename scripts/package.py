@@ -74,6 +74,7 @@ def main():
         shutil.copy2(patch, bundle / "provenance" / patch.name)
     shutil.copytree(ROOT / "fixtures", bundle / "provenance/fixtures",
                     ignore=shutil.ignore_patterns("*.elf"))
+    shutil.copytree(ROOT / "mpact-patches", bundle / "provenance/mpact-patches")
     output_root = Path(run("bazel", "--output_user_root=" + str(ROOT / ".cache/bazel"),
                            "info", "output_base")) / "external"
     for repo in output_root.iterdir():
@@ -91,6 +92,7 @@ def main():
         "executables": sorted(outputs),
         "examples": [name + ".elf" for name in FIXTURES],
         "patches": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT / "patches").glob("*.patch")},
+        "mpact_patches": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT / "mpact-patches").glob("*.patch")},
         "bazel": run("bazel", "--version"),
         "clang": run("clang", "--version").splitlines()[0],
         "java": subprocess.check_output(["java", "--version"], text=True).splitlines()[0],

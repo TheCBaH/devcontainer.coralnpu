@@ -48,6 +48,7 @@ def prepare():
     (SOURCE / "internal/netlist_test").mkdir(parents=True, exist_ok=True)
     (SOURCE / "internal/netlist_test/BUILD.bazel").write_text("")
     shutil.copytree(ROOT / "fixtures", SOURCE / "portable_fixtures", dirs_exist_ok=True)
+    shutil.copytree(ROOT / "mpact-patches", SOURCE / "portable_patches", dirs_exist_ok=True)
 
 
 def main():

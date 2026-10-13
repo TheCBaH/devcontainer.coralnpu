@@ -14,6 +14,9 @@ ELF rejection for all six simulators, and fails on timeouts. Success finishes
 with `External scalar, RVV, vector FP, matrix and invalid-input checks passed`.
 Each RTL simulator also runs the scalar example with tracing enabled and must
 produce a nonempty FST waveform.
+MPACT runs use `--exit_on_ebreak`, so the startup trap handler stops a failing
+program promptly. The script still requires its success marker and bounds
+timeouts and printed diagnostic output.
 
 | Example | Checks | Success marker | Models exercised by smoke.sh |
 | --- | --- | --- | --- |
@@ -26,8 +29,8 @@ produce a nonempty FST waveform.
 
 ```sh
 bin/core_mini_axi_sim --binary=examples/scalar.elf --cycles=1000000
-bin/coralnpu_m3_sim --semihost_htif examples/rvv_fp.elf
-bin/coralnpu_m4_sim --semihost_htif examples/matrix.elf
+bin/coralnpu_m3_sim --semihost_htif --exit_on_ebreak examples/rvv_fp.elf
+bin/coralnpu_m4_sim --semihost_htif --exit_on_ebreak examples/matrix.elf
 bin/vme_core_mini_axi_sim --binary=examples/matrix.elf --cycles=1000000
 bin/rvv_core_mini_axi_sim --binary=examples/rvv_fp.elf --cycles=1000000
 ```
@@ -66,6 +69,16 @@ mnemonics. Encodings follow the pinned
 and [Zvt format](https://github.com/google/mpact-riscv/blob/e4f1e9c1b243954ff8388fd39019248b2ae7341a/riscv/riscv_zvt.bin_fmt).
 The upstream [matrix operation tests](https://github.com/google-coral/coralnpu-mpact/blob/7670ee4c3df4cbc0ea06220c39a19b5d14338ed6/sim/test/coralnpu_m4_ops_test.cc)
 provide independent scalar expected results for these operations.
+The pinned M4 binary decoder omits M3's BF16-conversion instruction group;
+the wrapper applies `provenance/mpact-patches/m4-bf16-decoder.patch` to restore
+that inherited instruction. The FP/BF16 example tests this path on both models.
+`provenance/mpact-patches/matrix-altfmt.patch` also permits the matrix-specific
+alternate-format bit during MPACT matrix configuration and guards invalid
+element widths. The BF16 matrix case exercises configuration and arithmetic.
+`provenance/0009-vme-retirement-interlock.patch` prevents tile-store
+completions from colliding with staggered matrix-result retirement in VME.
+The accumulation, configuration-readback and program-exit checks cover this
+sequence, which otherwise leaves the matrix engine busy indefinitely.
 
 ## RTL waveforms
 

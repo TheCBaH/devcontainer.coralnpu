@@ -1,0 +1,73 @@
+--- a/hdl/chisel/src/coralnpu/RetirementBuffer.scala
++++ b/hdl/chisel/src/coralnpu/RetirementBuffer.scala
+@@ -799,8 +799,11 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
+         } else {
+           debug.inst(i).bits.tileWrites.get := 0.U.asTypeOf(debug.inst(i).bits.tileWrites.get)
+         }
+-        val inst              = instBuffer.io.dataOut(i).inst
+-        val isMsetWritesMtype = RvvCompressedInstruction.isMsetWritesMtype(inst)
++        val isMsetWritesMtype = if (mini) {
++          false.B
++        } else {
++          RvvCompressedInstruction.isMsetWritesMtype(instBuffer.io.dataOut(i).inst)
++        }
+         debug.inst(i).bits.mtype.get.valid := valid && !resultUpdate(
+           i
+         ).bits.trap && isMsetWritesMtype
+--- a/tests/verilator_sim/coralnpu/core_mini_axi_tb.h
++++ b/tests/verilator_sim/coralnpu/core_mini_axi_tb.h
+@@ -19,6 +19,7 @@
+ #include <deque>
+ #include <functional>
+ #include <map>
++#include <memory>
+ #include <optional>
+ #include <queue>
+ #include <vector>
+@@ -164,6 +165,27 @@ struct CoreMiniAxi_tb : Sysc_tb {
+ #undef RB_DEBUG_IO_VECS_8
+ #undef RB_DEBUG_IO_VEC
+ #undef RB_DEBUG_IO_DATA_WIDTH
++#if (KP_enableVme == true)
++    std::vector<std::unique_ptr<sc_signal<bool>>> matrix_flags;
++    std::vector<std::unique_ptr<sc_signal<sc_bv<KP_vmeRegCountWidth>>>> matrix_indices;
++    std::vector<std::unique_ptr<sc_signal<sc_bv<KP_vmeSubtileBytes * 8>>>> matrix_data;
++    std::vector<std::unique_ptr<sc_signal<sc_bv<KP_xlen>>>> matrix_words;
++
++    template <typename T>
++    static bool BindSignal(sc_core::sc_object* object,
++                           std::vector<std::unique_ptr<sc_signal<T>>>& signals) {
++      auto* port = dynamic_cast<sc_out<T>*>(object);
++      if (!port) return false;
++      signals.push_back(std::make_unique<sc_signal<T>>());
++      (*port)(*signals.back());
++      return true;
++    }
++
++    bool BindMatrixPort(sc_core::sc_object* object) {
++      return BindSignal(object, matrix_flags) || BindSignal(object, matrix_indices) ||
++             BindSignal(object, matrix_data) || BindSignal(object, matrix_words);
++    }
++#endif
+   };
+ 
+   struct DebugModuleIO {
+--- a/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
++++ b/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
+@@ -204,6 +204,16 @@ void CoreMiniAxi_tb::Connect() {
+ #undef BIND_RB_DEBUG_IO
+ #undef BIND_RB_DEBUG_IO_VECS_8
+ #undef BIND_RB_DEBUG_IO_VEC
++#if (KP_enableVme == true)
++  // SystemC requires sinks for matrix debug outputs, including mini-mode zeros.
++  for (auto* object : core_->get_child_objects()) {
++    const std::string name = object->basename();
++    if (name.find("io_debug_rb_inst_") != 0 ||
++        (name.find("_bits_tileWrites_") == std::string::npos &&
++         name.find("_bits_mtype_") == std::string::npos)) continue;
++    CHECK(debug_io_.BindMatrixPort(object)) << "Unsupported matrix debug port: " << name;
++  }
++#endif
+ #endif
+   core_->io_dm_req_valid(dm_io_.req_valid);
+   core_->io_dm_req_ready(dm_io_.req_ready);

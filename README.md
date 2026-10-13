@@ -15,9 +15,9 @@ publish the same assets. An initial release has not been published.
 sha256sum -c SHA256SUMS
 tar -xzf coralnpu-emulators-linux-x86_64.tar.gz
 cd coralnpu-emulators-linux-x86_64
-bin/coralnpu_v2_sim --semihost_htif examples/scalar.elf
-bin/coralnpu_m3_sim --semihost_htif examples/rvv_fp.elf
-bin/coralnpu_m4_sim --semihost_htif examples/matrix.elf
+bin/coralnpu_v2_sim --semihost_htif --exit_on_ebreak examples/scalar.elf
+bin/coralnpu_m3_sim --semihost_htif --exit_on_ebreak examples/rvv_fp.elf
+bin/coralnpu_m4_sim --semihost_htif --exit_on_ebreak examples/matrix.elf
 bin/vme_core_mini_axi_sim --binary=examples/matrix.elf
 bin/core_mini_axi_sim --binary=examples/scalar.elf
 bin/rvv_core_mini_axi_sim --binary=examples/rvv.elf

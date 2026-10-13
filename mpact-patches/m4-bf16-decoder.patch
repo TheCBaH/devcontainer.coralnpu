@@ -1,0 +1,10 @@
+--- a/sim/coralnpu_m4.bin_fmt
++++ b/sim/coralnpu_m4.bin_fmt
+@@ -63,6 +63,7 @@
+     RiscVZbbImmInst32,
+     RiscVPrivInst32,
+     CoralNPUV2CustomInst32,
++    RiscVZvfbfminInst32_M3,
+     RiscVZvtInst32,
+   };
+ };

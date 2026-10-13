@@ -1,0 +1,13 @@
+--- a/hdl/verilog/rvv/design/Zvt/zvt.sv
++++ b/hdl/verilog/rvv/design/Zvt/zvt.sv
+@@ -125,7 +125,9 @@
+     .vmelsuresRdy     (vmelsuresRdy),
+     .peCmdVld         (peCmdVld),
+     .peCmdRdy         (peCmdRdy),
+-    .peBusy           (peBusy),
++    // Each block's retirement FIFO accepts one result per cycle.
++    // Keep misc results behind the staggered PE retirement pulses.
++    .peBusy           (peBusy || (|peRtVld) || (|blkRtVld)),
+     .peReadMtIdx      (peReadMtIdx),
+     .peReadSubIdx     (peReadSubIdx),
+   `ifdef TB_SUPPORT
