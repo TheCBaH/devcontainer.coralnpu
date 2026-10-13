@@ -22,15 +22,29 @@ check() {
   fi
   grep -q "$marker" output.log
 }
-for sim in core_mini_axi_sim rvv_core_mini_axi_sim; do
-  check CORAL_SCALAR_PASS "$root/bin/$sim" --binary="$root/examples/scalar.elf" --cycles=1000000
+for sim in core_mini_axi_sim rvv_core_mini_axi_sim vme_core_mini_axi_sim; do
+  check CORAL_SCALAR_PASS "$root/bin/$sim" --binary="$root/examples/scalar.elf" --cycles=1000000 --trace
+  waveform=$(sed -n 's/.*for tracing: 1 ps (\(.*\.fst\)).*/\1/p' output.log)
+  test -n "$waveform"
+  test -s "$waveform"
+  echo "FST waveform generated: $waveform"
 done
-check CORAL_SCALAR_PASS "$root/bin/coralnpu_v2_sim" --semihost_htif "$root/examples/scalar.elf"
-check CORAL_RVV_PASS "$root/bin/coralnpu_v2_sim" --semihost_htif "$root/examples/rvv.elf"
-check CORAL_RVV_PASS "$root/bin/rvv_core_mini_axi_sim" --binary="$root/examples/rvv.elf" --cycles=1000000
-for sim in core_mini_axi_sim rvv_core_mini_axi_sim coralnpu_v2_sim; do
+for sim in coralnpu_v2_sim coralnpu_m3_sim coralnpu_m4_sim; do
+  check CORAL_SCALAR_PASS "$root/bin/$sim" --semihost_htif "$root/examples/scalar.elf"
+  check CORAL_RVV_PASS "$root/bin/$sim" --semihost_htif "$root/examples/rvv.elf"
+done
+for sim in rvv_core_mini_axi_sim vme_core_mini_axi_sim; do
+  check CORAL_RVV_PASS "$root/bin/$sim" --binary="$root/examples/rvv.elf" --cycles=1000000
+  check CORAL_RVV_FP_PASS "$root/bin/$sim" --binary="$root/examples/rvv_fp.elf" --cycles=1000000
+done
+for sim in coralnpu_m3_sim coralnpu_m4_sim; do
+  check CORAL_RVV_FP_PASS "$root/bin/$sim" --semihost_htif "$root/examples/rvv_fp.elf"
+done
+check CORAL_MATRIX_PASS "$root/bin/coralnpu_m4_sim" --semihost_htif "$root/examples/matrix.elf"
+check CORAL_MATRIX_PASS "$root/bin/vme_core_mini_axi_sim" --binary="$root/examples/matrix.elf" --cycles=1000000
+for sim in core_mini_axi_sim rvv_core_mini_axi_sim vme_core_mini_axi_sim coralnpu_v2_sim coralnpu_m3_sim coralnpu_m4_sim; do
   set +e
-  if [ "$sim" = coralnpu_v2_sim ]; then
+  if [[ "$sim" = coralnpu_* ]]; then
     timeout 10 "$root/bin/$sim" "$scratch/missing.elf" >invalid.log 2>&1
   else
     timeout 10 "$root/bin/$sim" --binary="$scratch/missing.elf" >invalid.log 2>&1
@@ -41,4 +55,4 @@ for sim in core_mini_axi_sim rvv_core_mini_axi_sim coralnpu_v2_sim; do
   test "$status" -ne 124
   test "$status" -ne 127
 done
-echo "External scalar, RVV and invalid-input checks passed"
+echo "External scalar, RVV, vector FP, matrix and invalid-input checks passed"

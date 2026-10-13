@@ -3,7 +3,13 @@ set -euo pipefail
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root/dist"
 sha256sum -c SHA256SUMS
-for archive in coralnpu-emulators-linux-*.tar.gz; do
+shopt -s nullglob
+archives=(coralnpu-emulators-linux-*.tar.gz)
+if [ "${#archives[@]}" -eq 0 ]; then
+  echo "No emulator archives were packaged"
+  exit 1
+fi
+for archive in "${archives[@]}"; do
   for image in ubuntu:24.04 debian:13-slim; do
     docker run --rm --network=none \
       --mount "type=bind,src=$root/dist,dst=/archives,readonly" \

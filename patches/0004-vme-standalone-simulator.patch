@@ -1,0 +1,42 @@
+--- a/hdl/chisel/src/coralnpu/BUILD
++++ b/hdl/chisel/src/coralnpu/BUILD
+@@ -795,6 +795,7 @@ template_rule(
+             ],
+             "gen_flags": [
+                 "--moduleName=VmeCoreMini",
++                "--exposeDebugPorts=True",
+                 "--itcmSizeKBytes=8",
+                 "--dtcmSizeKBytes=32",
+             ] + VME_CORE_MINI_AXI_COMMON_GEN_FLAGS,
+--- a/tests/verilator_sim/BUILD
++++ b/tests/verilator_sim/BUILD
+@@ -147,6 +147,17 @@ template_rule(
+                 "VERILATOR_MODEL=VRvvCoreMiniAxi",
+             ],
+         },
++        "vme_core_mini_axi_tb": {
++            "srcs": [
++                "@coralnpu_hw//hdl/chisel/src/coralnpu:VVmeCoreMiniAxi_parameters.h",
++            ] + CORE_MINI_AXI_TB_CC_LIBRARY_COMMON_SRCS,
++            "deps": [
++                "//hdl/chisel/src/coralnpu:vme_core_mini_axi_cc_library",
++            ] + CORE_MINI_AXI_TB_CC_LIBRARY_COMMON_DEPS,
++            "defines": [
++                "VERILATOR_MODEL=VVmeCoreMiniAxi",
++            ],
++        },
+         "rvv_core_mini_highmem_axi_tb": {
+             "srcs": [
+                 "@coralnpu_hw//hdl/chisel/src/coralnpu:VRvvCoreMiniHighmemAxi_parameters.h",
+@@ -224,6 +235,11 @@ template_rule(
+                 ":rvv_core_mini_axi_tb",
+             ] + CORE_MINI_AXI_SIM_CC_BINARY_COMMON_DEPS,
+         },
++        "vme_core_mini_axi_sim": {
++            "deps": [
++                ":vme_core_mini_axi_tb",
++            ] + CORE_MINI_AXI_SIM_CC_BINARY_COMMON_DEPS,
++        },
+         "rvv_core_mini_highmem_axi_sim": {
+             "deps": [
+                 ":rvv_core_mini_highmem_axi_tb",

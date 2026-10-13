@@ -9,7 +9,7 @@ import shutil
 import subprocess
 import tarfile
 
-from build import ROOT, SOURCE, run
+from build import FIXTURES, ROOT, SOURCE, run
 
 SYSTEM = re.compile(r"^(lib(c|m|pthread|dl|rt|resolv|util)\.so\.|ld-linux)")
 ARCH = {"x86_64": "x86_64", "aarch64": "aarch64"}[platform.machine()]
@@ -58,8 +58,10 @@ def main():
                 libraries[dep] = location
                 pending.append(dep)
         run("patchelf", "--set-rpath", "$ORIGIN", str(path), cwd=ROOT)
-    for filename in ("scalar.elf", "rvv.elf"):
+    for fixture in FIXTURES:
+        filename = fixture + ".elf"
         shutil.copy2(ROOT / "fixtures" / filename, bundle / "examples" / filename)
+    shutil.copy2(ROOT / "fixtures/README.md", bundle / "examples/README.md")
     shutil.copy2(ROOT / "scripts/smoke.sh", bundle / "smoke.sh")
     shutil.copy2(ROOT / "README.md", bundle / "README.md")
     shutil.copy2(ROOT / "LICENSE", bundle / "licenses/wrapper-MIT")
@@ -86,6 +88,8 @@ def main():
         "architecture": ARCH,
         "wrapper_commit": run("git", "rev-parse", "HEAD", cwd=ROOT),
         "upstream_commit": run("git", "rev-parse", "HEAD", cwd=ROOT / "coralnpu"),
+        "executables": sorted(outputs),
+        "examples": [name + ".elf" for name in FIXTURES],
         "patches": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT / "patches").glob("*.patch")},
         "bazel": run("bazel", "--version"),
         "clang": run("clang", "--version").splitlines()[0],

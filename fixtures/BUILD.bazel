@@ -14,3 +14,18 @@ coralnpu_v2_binary(
     enable_vmem = False,
     stack_size_bytes = 2048,
 )
+coralnpu_v2_binary(
+    name = "rvv_fp",
+    srcs = ["rvv_fp.cc"],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+)
+coralnpu_v2_binary(
+    name = "matrix",
+    srcs = ["matrix.cc"],
+    copts = ["-fno-tree-vectorize", "-fno-tree-slp-vectorize"],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+)

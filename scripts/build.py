@@ -10,15 +10,24 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / ".cache/source"
+FIXTURES = ("scalar", "rvv", "rvv_fp", "matrix")
 TARGETS = {
     "coralnpu_v2_sim": "@coralnpu_mpact//sim:coralnpu_v2_sim",
+    "coralnpu_m3_sim": "@coralnpu_mpact//sim:coralnpu_m3_sim",
+    "coralnpu_m4_sim": "@coralnpu_mpact//sim:coralnpu_m4_sim",
     "core_mini_axi_sim": "//tests/verilator_sim:core_mini_axi_sim",
     "rvv_core_mini_axi_sim": "//tests/verilator_sim:rvv_core_mini_axi_sim",
+    "vme_core_mini_axi_sim": "//tests/verilator_sim:vme_core_mini_axi_sim",
 }
 
 
 def run(*args, cwd=SOURCE):
-    return subprocess.check_output(args, cwd=cwd, text=True).strip()
+    try:
+        return subprocess.check_output(args, cwd=cwd, text=True).strip()
+    except subprocess.CalledProcessError as error:
+        if error.output:
+            print(error.output, file=sys.stderr, flush=True)
+        raise
 
 
 def bazel(*args):
@@ -48,8 +57,8 @@ def main():
     elif command == "fixtures":
         if platform.machine() != "x86_64":
             raise SystemExit("Build guest fixtures on x86_64, then copy fixtures/*.elf to ARM64")
-        bazel("build", "-c", "opt", "//portable_fixtures:scalar.elf", "//portable_fixtures:rvv.elf")
-        for name in ("scalar", "rvv"):
+        bazel("build", "-c", "opt", *("//portable_fixtures:" + name + ".elf" for name in FIXTURES))
+        for name in FIXTURES:
             output = bazel("cquery", "//portable_fixtures:" + name + ".elf", "-c", "opt", "--output=files")
             shutil.copy2(SOURCE / output.splitlines()[-1], ROOT / "fixtures" / (name + ".elf"))
         output_base = Path(run("bazel", "--output_user_root=" + str(ROOT / ".cache/bazel"),
@@ -63,7 +72,7 @@ def main():
         outputs = {}
         for name, target in TARGETS.items():
             print("Building", target, flush=True)
-            flags = ["--platforms=//toolchain/host_clang:host_clang_platform"] if name == "coralnpu_v2_sim" else []
+            flags = ["--platforms=//toolchain/host_clang:host_clang_platform"] if target.startswith("@coralnpu_mpact//") else []
             bazel("build", "-c", "opt", *flags, target)
             output = bazel("cquery", "-c", "opt", *flags, target, "--output=files")
             outputs[name] = str(SOURCE / output.splitlines()[-1])
