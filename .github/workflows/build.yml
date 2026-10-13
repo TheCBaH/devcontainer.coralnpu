@@ -42,7 +42,7 @@ jobs:
         run: echo 'EXEC=${{ steps.container.outputs.exec }}' >> "$GITHUB_ENV"
       - name: Cache Bazel inputs and actions
         id: bazel-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             .cache/repos
@@ -61,7 +61,7 @@ jobs:
           if-no-files-found: error
       - name: Save Bazel cache
         if: always() && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             .cache/repos
@@ -101,7 +101,7 @@ jobs:
           path: fixtures
       - name: Cache Bazel inputs and actions
         id: bazel-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             .cache/repos
@@ -129,7 +129,7 @@ jobs:
           if-no-files-found: ignore
       - name: Save Bazel cache
         if: always() && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             .cache/repos
@@ -198,7 +198,7 @@ jobs:
           path: fixtures
       - name: Cache Bazel inputs and actions
         id: bazel-cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: |
             .cache/repos
@@ -226,7 +226,7 @@ jobs:
           if-no-files-found: ignore
       - name: Save Bazel cache
         if: always() && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: |
             .cache/repos
