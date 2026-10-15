@@ -27,7 +27,7 @@ for sim in core_mini_axi_sim rvv_core_mini_axi_sim vme_core_mini_axi_sim; do
   waveform=$(sed -n 's/.*for tracing: 1 ps (\(.*\.fst\)).*/\1/p' output.log)
   test -n "$waveform"
   test -s "$waveform"
-  echo "FST waveform generated: $waveform"
+  echo "FST waveform generated: $waveform ($(stat -c %s "$waveform") bytes)"
 done
 for sim in coralnpu_v2_sim coralnpu_m3_sim coralnpu_m4_sim; do
   check CORAL_SCALAR_PASS "$root/bin/$sim" --semihost_htif --exit_on_ebreak "$root/examples/scalar.elf"

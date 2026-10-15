@@ -91,6 +91,9 @@ bin/rvv_core_mini_axi_sim --binary=examples/rvv.elf --cycles=1000000 --trace
 The simulator prints the waveform path under `/tmp`, typically
 `/tmp/VRvvCoreMiniAxi.core.fst` for this command. It overwrites that model's
 previous trace, so copy the file after a run if you need to preserve it.
+Upstream flushes the trace after every dump, which repeats every signal's value
+in each FST block; `provenance/0010-fst-periodic-flush.patch` flushes every
+4096 dumps instead, so a run killed before it ends loses at most those.
 MPACT V2/M3/M4 do not produce RTL waveforms.
 
 For VCD output, convert the FST using a separately installed

@@ -1,0 +1,29 @@
+--- a/tests/verilator_sim/sysc_tb.h
++++ b/tests/verilator_sim/sysc_tb.h
+@@ -258,14 +258,24 @@
+   uint32_t sim_time_ = 0;
+   VerilatedFstC *tf_ = nullptr;
+ 
++  // Every FST flush ends a block, and each block starts with the value of
++  // every signal, so flushing after each dump makes the waveform far larger
++  // than its VCD. Flush periodically to bound what a crashed run loses.
++  static constexpr uint32_t kTraceFlushInterval = 4096;
++
++  void trace_dump() {
++    tf_->dump(sim_time_++);
++    if (sim_time_ % kTraceFlushInterval == 0) tf_->flush();
++  }
++
+   void tb_posedge() {
+-    if (tf_ && started_) { tf_->dump(sim_time_++); tf_->flush(); }
++    if (tf_ && started_) trace_dump();
+     if (reset) return;
+     posedge();
+   }
+ 
+   void tb_negedge() {
+-    if (tf_ && started_) { tf_->dump(sim_time_++); tf_->flush(); }
++    if (tf_ && started_) trace_dump();
+     if (reset) return;
+     negedge();
+   }
