@@ -40,6 +40,10 @@ def bazel(*args):
 
 
 def prepare():
+    expected = (ROOT / "coralnpu/.bazelversion").read_text().strip()
+    actual = run("bazel", "--version", cwd=ROOT).split()[-1]
+    if actual != expected:
+        raise SystemExit("bazel " + actual + " installed, coralnpu requires " + expected)
     SOURCE.mkdir(parents=True, exist_ok=True)
     subprocess.run(["rsync", "-a", "--delete", "--exclude=.git", "--exclude=bazel-*",
                     str(ROOT / "coralnpu") + "/", str(SOURCE) + "/"], check=True)

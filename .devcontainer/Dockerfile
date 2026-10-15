@@ -13,8 +13,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 RUN for tool in clang clang++ clang-cpp llvm-ar llvm-nm llvm-objcopy llvm-strip; do \
       ln -s /usr/bin/$tool-19 /usr/local/bin/$tool; done && \
     ln -s /usr/bin/ld.lld-19 /usr/local/bin/ld.lld
-COPY install-tools.sh /tmp/install-tools.sh
-RUN bash /tmp/install-tools.sh
 FROM tools AS firtool-builder
 COPY build-firtool.sh /tmp/build-firtool.sh
 RUN bash /tmp/build-firtool.sh

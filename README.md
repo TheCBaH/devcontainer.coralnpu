@@ -71,6 +71,10 @@ results and bad inputs.
 `make ci` runs fixture build, packaging and external tests on an x86_64
 Docker host with the development tools installed.
 
+The devcontainer installs Bazel 9.1.0, the version in
+`coralnpu/.bazelversion`, from its release binary; `make prepare` fails if
+they differ.
+
 CI runs on native Ubuntu x86_64 and ARM64 runners. `build.json` records
 source revisions, patch hashes and tool versions; notices are under
 `licenses/`. Development stays on `devel` until CI passes. Pushing a

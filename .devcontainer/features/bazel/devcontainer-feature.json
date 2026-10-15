@@ -1,0 +1,13 @@
+{
+    "name": "Bazel",
+    "id": "bazel",
+    "version": "1.0.0",
+    "description": "Install a fixed Bazel release instead of Bazelisk",
+    "options": {
+        "version": {
+            "type": "string",
+            "default": "9.1.0",
+            "description": "Bazel release; must match coralnpu/.bazelversion"
+        }
+    }
+}
