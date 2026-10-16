@@ -55,7 +55,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: guest-fixtures
-          path: fixtures/*.elf
+          path: |
+            fixtures/*.elf
+            fixtures/*.ld
           if-no-files-found: error
       - name: Save Bazel cache
         if: always() && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true'
@@ -69,6 +71,10 @@ jobs:
     needs: fixtures
     runs-on: ubuntu-24.04
     timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        archive: [emulators, libraries, subsystem]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -100,23 +106,25 @@ jobs:
           path: |
             .cache/repos
             .cache/actions
-          key: bazel-x86_64-${{ hashFiles('.gitmodules', 'patches/**', '.devcontainer/**', 'scripts/**', 'fixtures/**') }}-${{ github.sha }}
-          restore-keys: bazel-x86_64-
-      - name: Build and package emulators
-        run: $EXEC make package
+          key: bazel-x86_64-${{ matrix.archive }}-${{ hashFiles('.gitmodules', 'patches/**', '.devcontainer/**', 'scripts/**', 'fixtures/**') }}-${{ github.sha }}
+          restore-keys: |
+            bazel-x86_64-${{ matrix.archive }}-
+            bazel-x86_64-
+      - name: Build and package
+        run: $EXEC make package ARCHIVES=${{ matrix.archive }}
       - name: Test external archives
         run: make test
-      - name: Upload verified emulators
+      - name: Upload verified archives
         uses: actions/upload-artifact@v7
         with:
-          name: emulators-x86_64
+          name: ${{ matrix.archive }}-x86_64
           path: dist/*
           if-no-files-found: error
       - name: Preserve failed archives
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: diagnostics-x86_64
+          name: diagnostics-${{ matrix.archive }}-x86_64
           path: dist/*
           if-no-files-found: ignore
       - name: Save Bazel cache
@@ -160,6 +168,10 @@ jobs:
     needs: [arm-image, fixtures]
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        archive: [emulators, libraries, subsystem]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -191,23 +203,25 @@ jobs:
           path: |
             .cache/repos
             .cache/actions
-          key: bazel-aarch64-${{ hashFiles('.gitmodules', 'patches/**', '.devcontainer/**', 'scripts/**') }}-${{ github.sha }}
-          restore-keys: bazel-aarch64-
-      - name: Build and package emulators
-        run: $EXEC make package
+          key: bazel-aarch64-${{ matrix.archive }}-${{ hashFiles('.gitmodules', 'patches/**', '.devcontainer/**', 'scripts/**', 'fixtures/**') }}-${{ github.sha }}
+          restore-keys: |
+            bazel-aarch64-${{ matrix.archive }}-
+            bazel-aarch64-
+      - name: Build and package
+        run: $EXEC make package ARCHIVES=${{ matrix.archive }}
       - name: Test external archives
         run: make test
-      - name: Upload verified emulators
+      - name: Upload verified archives
         uses: actions/upload-artifact@v7
         with:
-          name: emulators-aarch64
+          name: ${{ matrix.archive }}-aarch64
           path: dist/*
           if-no-files-found: error
       - name: Preserve failed archives
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: diagnostics-aarch64
+          name: diagnostics-${{ matrix.archive }}-aarch64
           path: dist/*
           if-no-files-found: ignore
       - name: Save Bazel cache
@@ -221,3 +235,17 @@ jobs:
       - name: Disk usage
         if: always()
         run: df -h
+  manifests:
+    needs: [x86_64, aarch64]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: false
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          path: assets
+      - name: Compare host variants of each configuration
+        run: |
+          python3 scripts/validate_manifest.py --compare assets/*-x86_64/*.hardware-configurations.json assets/*-aarch64/*.hardware-configurations.json

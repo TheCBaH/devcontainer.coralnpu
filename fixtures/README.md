@@ -10,8 +10,10 @@ bash smoke.sh
 ```
 
 The script requires successful exits and the expected markers, checks missing
-ELF rejection for all six simulators, and fails on timeouts. Success finishes
-with `External scalar, RVV, vector FP, matrix and invalid-input checks passed`.
+ELF rejection for all simulators, and fails on timeouts. Each pass prints a
+`CORAL_RESULT <simulator> <example> pass` line, which CI collects into the
+fixture results. Success finishes
+with `External scalar, RVV, vector FP, matrix, memory and invalid-input checks passed`.
 Each RTL simulator also runs the scalar example with tracing enabled and must
 produce a nonempty FST waveform.
 MPACT runs use `--exit_on_ebreak`, so the startup trap handler stops a failing
@@ -24,6 +26,25 @@ timeouts and printed diagnostic output.
 | `rvv.elf` | Sixteen signed int32 vector additions with loads/stores | `CORAL_RVV_PASS` | V2, M3, M4, RVV/VME RTL |
 | `rvv_fp.elf` | Sixteen FP32 vector additions and FP32-to-BF16 conversion | `CORAL_RVV_FP_PASS` | M3, M4, RVV/VME RTL |
 | `matrix.elf` | Zvt configuration, tile zeroing, signed INT8/FP32/BF16 multiplication and integer accumulation | `CORAL_MATRIX_PASS` | M4, VME RTL |
+| `memory.elf` | Copies a 16 KiB DTCM buffer to testbench RAM at `0x20000000` and back | `CORAL_MEMORY_PASS` | V2, M3, M4, default-TCM RTL |
+| `memory_tcm512k.elf` | Fetches code at 448 KiB in ITCM; copies a 448 KiB DTCM buffer through testbench RAM | `CORAL_MEMORY_PASS` | 512 KiB and 1 MiB TCM RTL |
+| `memory_tcm1m.elf` | Same with code at 960 KiB and a 960 KiB DTCM buffer | `CORAL_MEMORY_PASS` | 1 MiB TCM RTL |
+| `scalar_tcm512k.elf`, `rvv_tcm512k.elf`, `rvv_fp_tcm512k.elf` | The scalar/RVV/vector-FP examples linked for DTCM at `0x100000` | as above | 512 KiB and 1 MiB TCM RTL |
+
+The memory examples check the addresses of the far function and of the last
+buffer word, so they fail if linked for a smaller layout. Buffers are sampled
+every 16 words plus the last word. They are linked with `linker/*.ld`, the
+upstream `coralnpu_v2_binary` layouts for 8/32 KiB, 512/512 KiB and 1/1 MiB;
+any non-default size moves DTCM to `0x100000`. An ELF linked for a larger
+layout does not fit a smaller simulator.
+
+The library archive has `library.elf`: the host writes four words at the start
+and end of the library's 1 GiB DDR model, the guest sums them, writes the sums
+to DDR, DTCM and the mailbox, and waits in `wfi`; `examples/library_example`
+checks all three (`CORAL_LIBRARY_PASS`). The subsystem archive has
+`subsystem_dma.elf` and `subsystem_dma_tcm1m.elf`: the guest programs the DMA
+engine at `0x40050000` to copy SRAM to DTCM, DTCM to SRAM and SRAM to ITCM,
+and prints `CORAL_SUBSYSTEM_DMA_PASS` on UART1.
 
 ## Run examples individually
 
@@ -33,6 +54,7 @@ bin/coralnpu_m3_sim --semihost_htif --exit_on_ebreak examples/rvv_fp.elf
 bin/coralnpu_m4_sim --semihost_htif --exit_on_ebreak examples/matrix.elf
 bin/vme_core_mini_axi_sim --binary=examples/matrix.elf --cycles=1000000
 bin/rvv_core_mini_axi_sim --binary=examples/rvv_fp.elf --cycles=1000000
+bin/core_mini_highmem_axi_sim --binary=examples/memory_tcm1m.elf --cycles=20000000
 ```
 
 The MPACT generation is selected by the executable name. Loading an ELF or

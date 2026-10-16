@@ -1,18 +1,62 @@
 #!/usr/bin/env python3
 import hashlib
 import json
-import os
 from pathlib import Path
 import platform
 import re
 import shutil
 import subprocess
+import sys
 import tarfile
 
-from build import FIXTURES, ROOT, SOURCE, run
+from build import ROOT, SOURCE, run
+import manifest
+import validate_manifest
 
 SYSTEM = re.compile(r"^(lib(c|m|pthread|dl|rt|resolv|util)\.so\.|ld-linux)")
 ARCH = {"x86_64": "x86_64", "aarch64": "aarch64"}[platform.machine()]
+ARCHIVES = {
+    "emulators": "coralnpu-emulators-linux-",
+    "libraries": "coralnpu-simulator-libraries-linux-",
+    "subsystem": "coralnpu-subsystem-linux-",
+}
+# Example ELF: (success marker, configurations it runs on, linker layout).
+EXAMPLES = {
+    "emulators": {
+        "scalar.elf": ("CORAL_SCALAR_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
+                                             "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
+        "rvv.elf": ("CORAL_RVV_PASS", ["rvv-core-mini-axi", "vme-core-mini-axi", "mpact-v2", "mpact-m3",
+                                       "mpact-m4"], "itcm8k_dtcm32k.ld"),
+        "rvv_fp.elf": ("CORAL_RVV_FP_PASS", ["rvv-core-mini-axi", "vme-core-mini-axi", "mpact-m3", "mpact-m4"],
+                       "itcm8k_dtcm32k.ld"),
+        "matrix.elf": ("CORAL_MATRIX_PASS", ["vme-core-mini-axi", "mpact-m4"], "itcm8k_dtcm32k.ld"),
+        "memory.elf": ("CORAL_MEMORY_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
+                                             "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
+        "scalar_tcm512k.elf": ("CORAL_SCALAR_PASS", ["core-mini-itcm512kb-dtcm512kb-axi", "core-mini-highmem-axi",
+                                                     "rvv-core-mini-itcm512kb-dtcm512kb-axi",
+                                                     "rvv-core-mini-highmem-axi"], "itcm512k_dtcm512k.ld"),
+        "rvv_tcm512k.elf": ("CORAL_RVV_PASS", ["rvv-core-mini-itcm512kb-dtcm512kb-axi",
+                                               "rvv-core-mini-highmem-axi"], "itcm512k_dtcm512k.ld"),
+        "rvv_fp_tcm512k.elf": ("CORAL_RVV_FP_PASS", ["rvv-core-mini-itcm512kb-dtcm512kb-axi",
+                                                     "rvv-core-mini-highmem-axi"], "itcm512k_dtcm512k.ld"),
+        "memory_tcm512k.elf": ("CORAL_MEMORY_PASS", ["core-mini-itcm512kb-dtcm512kb-axi", "core-mini-highmem-axi",
+                                                     "rvv-core-mini-itcm512kb-dtcm512kb-axi",
+                                                     "rvv-core-mini-highmem-axi"], "itcm512k_dtcm512k.ld"),
+        "memory_tcm1m.elf": ("CORAL_MEMORY_PASS", ["core-mini-highmem-axi", "rvv-core-mini-highmem-axi"],
+                             "itcm1m_dtcm1m.ld"),
+    },
+    "libraries": {
+        "library.elf": ("CORAL_LIBRARY_PASS", ["library-core-mini-axi", "library-rvv-core-mini-axi",
+                                               "library-vme-core-mini-axi"], "itcm8k_dtcm32k.ld"),
+    },
+    "subsystem": {
+        "subsystem_dma.elf": ("CORAL_SUBSYSTEM_DMA_PASS", ["subsystem-vector-normal", "subsystem-matrix-normal"],
+                              "itcm8k_dtcm32k.ld"),
+        "subsystem_dma_tcm1m.elf": ("CORAL_SUBSYSTEM_DMA_PASS", ["subsystem-vector-highmem",
+                                                                 "subsystem-matrix-highmem"], "itcm1m_dtcm1m.ld"),
+    },
+}
+SUBSYSTEM_BINARY = "bin/Vchip_"
 
 
 def dependencies(path):
@@ -22,21 +66,9 @@ def dependencies(path):
     return re.findall(r"(\S+) => (/\S+)", output)
 
 
-def main():
-    outputs = json.loads((ROOT / ".cache/outputs.json").read_text())
-    dist = ROOT / "dist"
-    dist.mkdir(exist_ok=True)
-    name = "coralnpu-emulators-linux-" + ARCH
-    bundle = ROOT / ".cache" / name
-    if bundle.exists():
-        shutil.rmtree(bundle)
-    for directory in ("bin", "lib", "examples", "licenses", "provenance"):
-        (bundle / directory).mkdir(parents=True, exist_ok=True)
+def bundle_libraries(bundle, sources, rpath):
     libraries = {}
-    for executable, source in outputs.items():
-        path = bundle / "bin" / executable
-        shutil.copy2(source, path)
-        path.chmod(0o755)
+    for path, source in sources:
         machine = run("readelf", "-h", str(path), cwd=ROOT)
         expected = "AArch64" if ARCH == "aarch64" else "Advanced Micro Devices X86-64"
         if expected not in machine:
@@ -46,7 +78,7 @@ def main():
                 if soname in libraries and Path(libraries[soname]).resolve() != Path(location).resolve():
                     raise RuntimeError("Conflicting libraries: " + soname)
                 libraries[soname] = location
-        run("patchelf", "--set-rpath", "$ORIGIN/../lib", str(path), cwd=ROOT)
+        run("patchelf", "--set-rpath", rpath, str(path), cwd=ROOT)
     pending = list(libraries)
     while pending:
         soname = pending.pop()
@@ -58,23 +90,14 @@ def main():
                 libraries[dep] = location
                 pending.append(dep)
         run("patchelf", "--set-rpath", "$ORIGIN", str(path), cwd=ROOT)
-    for fixture in FIXTURES:
-        filename = fixture + ".elf"
-        shutil.copy2(ROOT / "fixtures" / filename, bundle / "examples" / filename)
-    shutil.copy2(ROOT / "fixtures/README.md", bundle / "examples/README.md")
-    shutil.copy2(ROOT / "scripts/smoke.sh", bundle / "smoke.sh")
-    shutil.copy2(ROOT / "README.md", bundle / "README.md")
+    return libraries
+
+
+def copy_licenses(bundle):
     shutil.copy2(ROOT / "LICENSE", bundle / "licenses/wrapper-MIT")
     shutil.copy2(ROOT / "coralnpu/LICENSE", bundle / "licenses/coralnpu-Apache-2.0")
     for notice in (ROOT / "licenses").glob("*"):
         shutil.copy2(notice, bundle / "licenses" / notice.name)
-    for filename in ("MODULE.bazel", "MODULE.bazel.lock", "rules/repo_defs.bzl", "rules/repos.bzl"):
-        shutil.copy2(SOURCE / filename, bundle / "provenance" / Path(filename).name)
-    for patch in (ROOT / "patches").glob("*.patch"):
-        shutil.copy2(patch, bundle / "provenance" / patch.name)
-    shutil.copytree(ROOT / "fixtures", bundle / "provenance/fixtures",
-                    ignore=shutil.ignore_patterns("*.elf"))
-    shutil.copytree(ROOT / "mpact-patches", bundle / "provenance/mpact-patches")
     output_root = Path(run("bazel", "--output_user_root=" + str(ROOT / ".cache/bazel"),
                            "info", "output_base")) / "external"
     for repo in output_root.iterdir():
@@ -85,35 +108,189 @@ def main():
     for pattern in ("libstdc++*", "gcc-*-base", "libgcc-s*"):
         for path in Path("/usr/share/doc").glob(pattern + "/copyright"):
             shutil.copy2(path, bundle / "licenses" / (path.parent.name + "-copyright"))
-    metadata = {
-        "architecture": ARCH,
-        "wrapper_commit": run("git", "rev-parse", "HEAD", cwd=ROOT),
-        "upstream_commit": run("git", "rev-parse", "HEAD", cwd=ROOT / "coralnpu"),
-        "executables": sorted(outputs),
-        "examples": [name + ".elf" for name in FIXTURES],
-        "patches": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT / "patches").glob("*.patch")},
-        "mpact_patches": {p.name: hashlib.sha256(p.read_bytes()).hexdigest() for p in (ROOT / "mpact-patches").glob("*.patch")},
+    return output_root
+
+
+def copy_provenance(bundle):
+    for filename in ("MODULE.bazel", "MODULE.bazel.lock", "rules/repo_defs.bzl", "rules/repos.bzl",
+                     "toolchain/coralnpu_tcm.ld.tpl"):
+        shutil.copy2(SOURCE / filename, bundle / "provenance" / Path(filename).name)
+    for patch in (ROOT / "patches").glob("*.patch"):
+        shutil.copy2(patch, bundle / "provenance" / patch.name)
+    shutil.copytree(ROOT / "fixtures", bundle / "provenance/fixtures",
+                    ignore=shutil.ignore_patterns("*.elf", "*.ld"))
+    shutil.copytree(ROOT / "mpact-patches", bundle / "provenance/mpact-patches")
+    shutil.copytree(ROOT / "manifest", bundle / "provenance/manifest")
+    for script in ("manifest.py", "validate_manifest.py"):
+        shutil.copy2(ROOT / "scripts" / script, bundle / "provenance" / script)
+
+
+def host():
+    return {"architecture": ARCH, "os": "linux", "libc": "glibc", "minimum_glibc": manifest.MINIMUM_GLIBC}
+
+
+def build_tools():
+    tools = {
         "bazel": run("bazel", "--version"),
         "clang": run("clang", "--version").splitlines()[0],
         "java": subprocess.check_output(["java", "--version"], text=True).splitlines()[0],
         "glibc": run("getconf", "GNU_LIBC_VERSION"),
-        "minimum_glibc": "2.39",
+    }
+    firtool = shutil.which("firtool")
+    if firtool:
+        tools["firtool"] = run(firtool, "--version").splitlines()[0]
+    return tools
+
+
+def configurations(kind, outputs, revision):
+    records = {}
+    for name, path in outputs["files"].items():
+        model = outputs["elaboration"].get(name)
+        if kind == "emulators" and name in manifest.MPACT:
+            record = manifest.mpact(name, revision)
+        elif kind == "emulators":
+            record = manifest.standalone(name, model, model["parameters_header"], revision)
+        elif kind == "libraries":
+            record = manifest.library(name, model, model["parameters_header"], revision)
+        else:
+            record = manifest.subsystem(name, model, revision)
+        records[name] = manifest.finalize(record)
+    return records
+
+
+def artifact(bundle, relative, record, kind, runtime_files):
+    path = bundle / relative
+    entry = {
+        "path": relative,
+        "configuration_id": record["id"],
+        "kind": "shared-library" if kind == "libraries" else "executable",
+        "sha256": manifest.sha256(path),
+        "host": host(),
+        "abi": None,
+        "launch": {"method": "command-line", "command": [relative] + (
+            ["--semihost_htif", "--exit_on_ebreak", "<elf>"] if record["simulation"]["backend"] == "mpact" else
+            ["--load_elf=<elf>"] if kind == "subsystem" else ["--binary=<elf>"])},
+        "runtime_files": runtime_files,
+    }
+    if kind == "libraries":
+        entry["abi"] = ("C++17 Itanium ABI against libstdc++ (_GLIBCXX_USE_CXX11_ABI=1); "
+                        "extern \"C\" CoralNPUSimulator* coralnpu_simulator_verilator_create(void)")
+        entry["launch"] = {"method": "dlopen-or-link",
+                           "entry_points": ["coralnpu_simulator_verilator_create",
+                                            "coralnpu_simulator_verilator_create_with_options"],
+                           "headers": ["include/hw_sim/coralnpu_simulator.h", "include/hw_sim/mailbox.h"]}
+    return entry
+
+
+def package(kind):
+    outputs = json.loads((ROOT / ".cache" / ("outputs-" + kind + ".json")).read_text())
+    dist = ROOT / "dist"
+    dist.mkdir(exist_ok=True)
+    name = ARCHIVES[kind] + ARCH
+    bundle = ROOT / ".cache" / name
+    if bundle.exists():
+        shutil.rmtree(bundle)
+    for directory in ("bin", "lib", "examples", "licenses", "provenance", "linker"):
+        (bundle / directory).mkdir(parents=True, exist_ok=True)
+    revision = run("git", "rev-parse", "HEAD", cwd=ROOT / "coralnpu")
+    records = configurations(kind, outputs, revision)
+    placed = []
+    for filename, source in outputs["files"].items():
+        if kind == "libraries":
+            relative = "lib/" + filename
+        elif kind == "subsystem":
+            relative = SUBSYSTEM_BINARY + filename.split("chip_verilator_")[1]
+        else:
+            relative = "bin/" + filename
+        shutil.copy2(source, bundle / relative)
+        (bundle / relative).chmod(0o755)
+        placed.append((bundle / relative, source, filename, relative))
+    libraries = bundle_libraries(bundle, [(p, s) for p, s, _, _ in placed],
+                                 "$ORIGIN" if kind == "libraries" else "$ORIGIN/../lib")
+    output_root = copy_licenses(bundle)
+    copy_provenance(bundle)
+    for example in EXAMPLES[kind]:
+        shutil.copy2(ROOT / "fixtures" / example, bundle / "examples" / example)
+    for layout in {layout for _, _, layout in EXAMPLES[kind].values()}:
+        shutil.copy2(ROOT / "fixtures" / layout, bundle / "linker" / layout)
+    shutil.copy2(ROOT / "README.md", bundle / "README.md")
+    shutil.copy2(ROOT / "fixtures/README.md", bundle / "examples/README.md")
+    runtime = []
+    if kind == "emulators":
+        shutil.copy2(ROOT / "scripts/smoke.sh", bundle / "smoke.sh")
+    elif kind == "libraries":
+        include = bundle / "include/hw_sim"
+        include.mkdir(parents=True)
+        for header in ("coralnpu_simulator.h", "mailbox.h"):
+            shutil.copy2(SOURCE / "hw_sim" / header, include / header)
+        helpers = bundle / "examples/tests/verilator_sim"
+        helpers.mkdir(parents=True)
+        for source in ("elf.h", "elf.cc"):
+            shutil.copy2(SOURCE / "tests/verilator_sim" / source, helpers / source)
+        shutil.copy2(ROOT / "examples/library_example.cc", bundle / "examples/library_example.cc")
+        run("clang++", "-std=c++17", "-O2", "-I", str(bundle / "include"), "-I", str(bundle / "examples"),
+            "-o", str(bundle / "examples/library_example"), str(bundle / "examples/library_example.cc"),
+            str(helpers / "elf.cc"), "-ldl", cwd=ROOT)
+        run("patchelf", "--set-rpath", "$ORIGIN/../lib", str(bundle / "examples/library_example"), cwd=ROOT)
+        shutil.copy2(ROOT / "scripts/smoke-libraries.sh", bundle / "smoke.sh")
+    else:
+        tools = bundle / "tools"
+        tools.mkdir()
+        for script in ("utils/coralnpu_soc_loader/loader.py", "utils/coralnpu_soc_loader/spi_driver.py"):
+            shutil.copy2(SOURCE / script, tools / Path(script).name)
+        elftools = Path(outputs["runtime"]["elftools"])
+        shutil.copytree(elftools, tools / "elftools", ignore=shutil.ignore_patterns("__pycache__"))
+        for license_path in elftools.parent.glob("pyelftools-*.dist-info/*LICENSE*"):
+            shutil.copy2(license_path, bundle / "licenses" / ("pyelftools-" + license_path.name))
+        (bundle / "share").mkdir()
+        shutil.copy2(outputs["runtime"]["grey_bars_320x240.raw"], bundle / "share/grey_bars_320x240.raw")
+        shutil.copy2(ROOT / "scripts/smoke-subsystem.sh", bundle / "smoke.sh")
+        runtime = ["tools/loader.py", "tools/spi_driver.py", "tools/elftools", "share/grey_bars_320x240.raw"]
+    for path in [*bundle.glob("bin/*"), *bundle.glob("lib/*"), *bundle.glob("examples/library_example")]:
+        symbols = run("readelf", "--version-info", str(path), cwd=ROOT)
+        for major, minor in re.findall(r"GLIBC_(\d+)\.(\d+)", symbols):
+            if (int(major), int(minor)) > tuple(map(int, manifest.MINIMUM_GLIBC.split("."))):
+                raise RuntimeError("Newer glibc needed by " + str(path))
+    lib_files = sorted("lib/" + soname for soname in libraries)
+    document = {
+        "schema_version": manifest.SCHEMA_VERSION,
+        "archive": {
+            "name": name,
+            "kind": kind,
+            "wrapper_repository": manifest.WRAPPER_REPOSITORY,
+            "wrapper_revision": run("git", "rev-parse", "HEAD", cwd=ROOT),
+            "host": host(),
+            "build_tools": build_tools(),
+        },
+        "id_rule": manifest.ID_RULE,
+        "configurations": sorted(records.values(), key=lambda record: record["name"]),
+        "artifacts": [artifact(bundle, relative, records[filename], kind, lib_files + runtime)
+                      for _, _, filename, relative in sorted(placed, key=lambda item: item[3])],
+        "fixtures": [{"path": "examples/" + example, "sha256": manifest.sha256(bundle / "examples" / example),
+                      "marker": marker, "linker_layout": "linker/" + layout,
+                      "configurations": sorted(record["id"] for record in records.values()
+                                               if record["name"] in names)}
+                     for example, (marker, names, layout) in sorted(EXAMPLES[kind].items())],
+    }
+    (bundle / "hardware-configurations.json").write_text(
+        json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    shutil.copy2(ROOT / "manifest/hardware-configurations.schema.json", bundle / "hardware-configurations.schema.json")
+    validate_manifest.validate(bundle)
+    (bundle / "build.json").write_text(json.dumps({
+        "architecture": ARCH,
+        "wrapper_commit": document["archive"]["wrapper_revision"],
+        "upstream_commit": revision,
+        "configuration_manifest": "hardware-configurations.json",
+        "files": sorted(relative for _, _, _, relative in placed),
+        "examples": sorted(EXAMPLES[kind]),
         "runtime_libraries": sorted(libraries),
         "runtime_packages": run("dpkg-query", "-W", "-f=${Package} ${Version}\n",
                                 "libstdc++6", "libgcc-s1", cwd=ROOT).splitlines(),
-        "sources": {
-            "coralnpu": "https://github.com/google-coral/coralnpu",
-            "libstdc++": "https://gcc.gnu.org/git/",
-            "dependency_pins": "coralnpu/MODULE.bazel, MODULE.bazel.lock and rules/repo_defs.bzl",
-        },
-    }
-    (bundle / "build.json").write_text(json.dumps(metadata, indent=2) + "\n")
-    for path in [*bundle.glob("bin/*"), *bundle.glob("lib/*")]:
-        symbols = run("readelf", "--version-info", str(path), cwd=ROOT)
-        for major, minor in re.findall(r"GLIBC_(\d+)\.(\d+)", symbols):
-            if (int(major), int(minor)) > (2, 39):
-                raise RuntimeError("Newer glibc needed by " + str(path))
+        "build_tools": document["archive"]["build_tools"],
+        "minimum_glibc": manifest.MINIMUM_GLIBC,
+    }, indent=2) + "\n")
     timestamp = int(run("git", "show", "-s", "--format=%ct", "HEAD", cwd=ROOT))
+
     def normalize(info):
         info.uid = info.gid = 0
         info.uname = info.gname = ""
@@ -122,10 +299,16 @@ def main():
     archive = dist / (name + ".tar.gz")
     with tarfile.open(archive, "w:gz") as tar:
         tar.add(bundle, arcname=name, filter=normalize)
-    archives = sorted(dist.glob("*.tar.gz"))
-    (dist / "SHA256SUMS").write_text("".join(
-        hashlib.sha256(p.read_bytes()).hexdigest() + "  " + p.name + "\n" for p in archives))
+    shutil.copy2(bundle / "hardware-configurations.json", dist / (name + ".hardware-configurations.json"))
     print(archive)
+
+
+def main():
+    for kind in sys.argv[1:] or ["emulators"]:
+        package(kind)
+    archives = sorted((ROOT / "dist").glob("*.tar.gz"))
+    (ROOT / "dist/SHA256SUMS").write_text("".join(
+        hashlib.sha256(p.read_bytes()).hexdigest() + "  " + p.name + "\n" for p in archives))
 
 
 if __name__ == "__main__":

@@ -1,0 +1,347 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/TheCBaH/devcontainer.coralnpu/blob/main/manifest/hardware-configurations.schema.json",
+  "title": "Coral NPU simulated hardware configurations",
+  "description": "Inventory of the simulated configurations in one archive and the artifacts that implement them. Addresses and sizes are integer bytes. null means unknown or unverified; false means verified absent. A missing optional field never implies support.",
+  "type": "object",
+  "required": ["schema_version", "archive", "id_rule", "configurations", "artifacts"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "archive": {
+      "type": "object",
+      "required": ["name", "kind", "wrapper_repository", "wrapper_revision", "host"],
+      "properties": {
+        "name": {"type": "string"},
+        "kind": {"enum": ["emulators", "subsystem", "libraries"]},
+        "wrapper_repository": {"type": "string"},
+        "wrapper_revision": {"$ref": "#/$defs/revision"},
+        "host": {"$ref": "#/$defs/host"},
+        "build_tools": {"type": "object", "additionalProperties": {"type": "string"}}
+      }
+    },
+    "id_rule": {"type": "string"},
+    "configurations": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/configuration"}
+    },
+    "artifacts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/artifact"}
+    },
+    "fixtures": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/fixture"}
+    }
+  },
+  "$defs": {
+    "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "address": {"type": "integer", "minimum": 0, "maximum": 4294967295},
+    "size": {"type": "integer", "minimum": 0, "maximum": 4294967296},
+    "tristate": {
+      "description": "true supported, false verified absent, null unknown",
+      "type": ["boolean", "null"]
+    },
+    "host": {
+      "type": "object",
+      "required": ["architecture", "os", "libc", "minimum_glibc"],
+      "properties": {
+        "architecture": {"enum": ["x86_64", "aarch64"]},
+        "os": {"const": "linux"},
+        "libc": {"const": "glibc"},
+        "minimum_glibc": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+$"}
+      }
+    },
+    "configuration": {
+      "type": "object",
+      "required": ["id", "name", "description", "provenance", "simulation", "isa", "memory_regions", "capabilities"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "description": "Opaque, immutable configuration ID. See id_rule.",
+          "type": "string",
+          "pattern": "^coralnpu:[a-z0-9-]+:[0-9a-f]{20}$"
+        },
+        "name": {"type": "string", "pattern": "^[a-z0-9-]+$"},
+        "description": {"type": "string"},
+        "provenance": {"$ref": "#/$defs/provenance"},
+        "simulation": {"$ref": "#/$defs/simulation"},
+        "isa": {"$ref": "#/$defs/isa"},
+        "memory_regions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/$defs/region"}
+        },
+        "capabilities": {"$ref": "#/$defs/capabilities"},
+        "limitations": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["repository", "revision", "target", "dependencies", "patches", "build_parameters"],
+      "properties": {
+        "repository": {"type": "string"},
+        "revision": {"$ref": "#/$defs/revision"},
+        "target": {"type": "string", "description": "Exact Bazel target that produced the artifact"},
+        "dependencies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "repository", "revision"],
+            "properties": {
+              "name": {"type": "string"},
+              "repository": {"type": "string"},
+              "revision": {"type": "string"},
+              "sha256": {"type": ["string", "null"]}
+            }
+          }
+        },
+        "patches": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["file", "sha256", "applies_to"],
+            "properties": {
+              "file": {"type": "string"},
+              "sha256": {"$ref": "#/$defs/sha256"},
+              "applies_to": {"type": "string"}
+            }
+          }
+        },
+        "build_parameters": {
+          "type": "object",
+          "description": "Effective elaboration/build parameters, including verification and retirement-buffer (ROB) settings",
+          "properties": {
+            "elaboration_target": {"type": ["string", "null"]},
+            "module": {"type": ["string", "null"]},
+            "generator_flags": {"type": "array", "items": {"type": "string"}},
+            "verilator_options": {"type": "array", "items": {"type": "string"}},
+            "defines": {"type": "array", "items": {"type": "string"}},
+            "enable_verification": {"$ref": "#/$defs/tristate"},
+            "rob_mode": {"enum": ["mini", "full", "not-applicable", null]},
+            "expose_debug_ports": {"$ref": "#/$defs/tristate"},
+            "generated_parameters": {
+              "type": "object",
+              "description": "KP_* values from the elaborated V<module>_parameters.h",
+              "additionalProperties": {"type": ["integer", "boolean", "string"]}
+            }
+          }
+        }
+      }
+    },
+    "simulation": {
+      "type": "object",
+      "required": ["backend", "interface", "top_level", "timing_scope", "boot", "termination", "runtime_overrides"],
+      "properties": {
+        "backend": {"enum": ["mpact", "verilator"]},
+        "interface": {"enum": ["standalone-cli", "subsystem-cli", "shared-library"]},
+        "top_level": {"type": "string"},
+        "timing_scope": {
+          "description": "functional: instruction-accurate, no cycle timing. cycle-rtl-core: cycle-based RTL core with untimed host models. cycle-rtl-subsystem: cycle-based RTL of the SoC subsystem.",
+          "enum": ["functional", "cycle-rtl-core", "cycle-rtl-subsystem"]
+        },
+        "clock": {
+          "type": "object",
+          "properties": {
+            "configured_frequency_mhz": {"type": ["number", "null"]},
+            "note": {"type": "string"}
+          }
+        },
+        "boot": {
+          "type": "object",
+          "required": ["loader", "entry"],
+          "properties": {
+            "loader": {"type": "string"},
+            "entry": {"type": "string"},
+            "steps": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "termination": {"type": "string"},
+        "runtime_overrides": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["flag", "changes_configuration", "description"],
+            "properties": {
+              "flag": {"type": "string"},
+              "default": {},
+              "changes_configuration": {"type": "boolean"},
+              "description": {"type": "string"}
+            }
+          }
+        }
+      }
+    },
+    "isa": {
+      "type": "object",
+      "required": ["xlen", "extensions", "vector", "matrix", "bf16", "disabled_generator_options"],
+      "properties": {
+        "xlen": {"const": 32},
+        "extensions": {
+          "description": "Enabled RISC-V extension names, lower case (i, m, f, zicsr, ...)",
+          "type": "array",
+          "items": {"type": "string", "pattern": "^[a-z][a-z0-9]*$"},
+          "uniqueItems": true
+        },
+        "compiler_march": {"type": ["string", "null"]},
+        "vector": {
+          "type": "object",
+          "required": ["supported", "vlen_bits"],
+          "properties": {
+            "supported": {"type": "boolean"},
+            "vlen_bits": {"type": ["integer", "null"]},
+            "elen_bits": {"type": ["integer", "null"]},
+            "floating_point": {"$ref": "#/$defs/tristate"}
+          }
+        },
+        "matrix": {
+          "type": "object",
+          "required": ["supported"],
+          "properties": {
+            "supported": {"type": "boolean"},
+            "extension": {"type": ["string", "null"]},
+            "tile_registers": {"type": ["integer", "null"]},
+            "element_formats": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "bf16": {
+          "type": "object",
+          "required": ["scalar_conversion", "vector_conversion", "matrix"],
+          "properties": {
+            "scalar_conversion": {"$ref": "#/$defs/tristate"},
+            "vector_conversion": {"$ref": "#/$defs/tristate"},
+            "matrix": {"$ref": "#/$defs/tristate"}
+          }
+        },
+        "disabled_generator_options": {
+          "description": "Generator options available upstream but not enabled in this configuration; these instructions are not supported",
+          "type": "array",
+          "items": {"type": "string"}
+        }
+      }
+    },
+    "access": {
+      "type": "object",
+      "required": ["guest_load", "guest_store", "instruction_fetch", "host_load", "dma"],
+      "additionalProperties": false,
+      "properties": {
+        "guest_load": {"$ref": "#/$defs/tristate"},
+        "guest_store": {"$ref": "#/$defs/tristate"},
+        "instruction_fetch": {"$ref": "#/$defs/tristate"},
+        "host_load": {"$ref": "#/$defs/tristate"},
+        "dma": {"$ref": "#/$defs/tristate"}
+      }
+    },
+    "region": {
+      "type": "object",
+      "required": ["name", "type", "base_address", "size_bytes", "implemented", "usable", "backing_model", "interface", "access"],
+      "properties": {
+        "name": {"type": "string"},
+        "type": {"enum": ["itcm", "dtcm", "ram", "rom", "ddr", "mmio", "mailbox", "csr"]},
+        "base_address": {"$ref": "#/$defs/address"},
+        "size_bytes": {"$ref": "#/$defs/size"},
+        "implemented": {"type": "boolean"},
+        "usable": {"type": "boolean"},
+        "counts_toward_capacity": {"type": "boolean"},
+        "backing_model": {
+          "description": "rtl-sram: RTL memory array. systemc-array: untimed SystemC byte array. host-vector: untimed host C++ buffer. mpact-flat: MPACT functional memory. register-file: MMIO registers. none: no backing store.",
+          "enum": ["rtl-sram", "rtl-rom", "systemc-array", "host-vector", "mpact-flat", "register-file", "none"]
+        },
+        "interface": {"type": "string"},
+        "timing": {"type": "string"},
+        "access": {"$ref": "#/$defs/access"},
+        "notes": {"type": "string"}
+      }
+    },
+    "capabilities": {
+      "type": "object",
+      "required": ["dma", "mmio", "peripherals", "external_instruction_fetch", "buses", "memory_timing_model", "waveform_tracing", "instruction_trace", "guest_output"],
+      "properties": {
+        "dma": {
+          "type": "object",
+          "required": ["present"],
+          "properties": {
+            "present": {"type": "boolean"},
+            "type": {"type": ["string", "null"]},
+            "mmio_base_address": {"oneOf": [{"$ref": "#/$defs/address"}, {"type": "null"}]},
+            "reachable_regions": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "mmio": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "base_address", "size_bytes"],
+            "properties": {
+              "name": {"type": "string"},
+              "base_address": {"$ref": "#/$defs/address"},
+              "size_bytes": {"$ref": "#/$defs/size"},
+              "description": {"type": "string"}
+            }
+          }
+        },
+        "peripherals": {"type": "array", "items": {"type": "string"}},
+        "external_instruction_fetch": {"$ref": "#/$defs/tristate"},
+        "buses": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name", "protocol", "data_width_bits"],
+            "properties": {
+              "name": {"type": "string"},
+              "protocol": {"type": "string"},
+              "data_width_bits": {"type": ["integer", "null"]},
+              "address_width_bits": {"type": ["integer", "null"]},
+              "note": {"type": "string"}
+            }
+          }
+        },
+        "memory_timing_model": {"type": "string"},
+        "waveform_tracing": {"enum": ["fst", false]},
+        "instruction_trace": {"$ref": "#/$defs/tristate"},
+        "guest_output": {"type": "string"},
+        "performance": {
+          "description": "Separated estimates and measurements; absent when none are published",
+          "type": "object"
+        }
+      }
+    },
+    "artifact": {
+      "type": "object",
+      "required": ["path", "configuration_id", "kind", "sha256", "host", "abi", "launch", "runtime_files"],
+      "properties": {
+        "path": {"type": "string"},
+        "configuration_id": {"type": "string"},
+        "kind": {"enum": ["executable", "shared-library"]},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "host": {"$ref": "#/$defs/host"},
+        "abi": {"type": ["string", "null"]},
+        "launch": {
+          "type": "object",
+          "required": ["method"],
+          "properties": {
+            "method": {"enum": ["command-line", "dlopen-or-link"]},
+            "command": {"type": "array", "items": {"type": "string"}},
+            "entry_points": {"type": "array", "items": {"type": "string"}},
+            "headers": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "runtime_files": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "fixture": {
+      "type": "object",
+      "required": ["path", "sha256", "marker", "configurations"],
+      "properties": {
+        "path": {"type": "string"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "marker": {"type": "string"},
+        "linker_layout": {"type": ["string", "null"]},
+        "configurations": {"type": "array", "items": {"type": "string"}}
+      }
+    }
+  }
+}

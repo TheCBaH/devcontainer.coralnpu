@@ -1,5 +1,6 @@
 .cache/
 dist/
 fixtures/*.elf
+fixtures/*.ld
 .devcontainer/devcontainer-lock.json
 __pycache__/

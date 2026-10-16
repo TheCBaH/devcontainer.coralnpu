@@ -5,10 +5,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
     echo 'deb [signed-by=/usr/share/keyrings/llvm.gpg] https://apt.llvm.org/noble/ llvm-toolchain-noble-19 main' > /etc/apt/sources.list.d/llvm.list && \
     apt-get update && apt-get install -y --no-install-recommends \
     autoconf automake bison build-essential ccache clang-19 clang-tools-19 \
-    cmake device-tree-compiler flex gawk git libelf-dev libffi-dev liblz4-dev \
+    cmake device-tree-compiler flex gawk git jq libelf-dev libffi-dev liblz4-dev \
     libmpfr-dev libtinfo-dev libzstd-dev lld-19 llvm-19 ninja-build \
     openjdk-21-jdk-headless patchelf pkg-config python3 python3-dev \
-    python3-numpy python3-pip python3-venv rsync shellcheck srecord sudo \
+    python3-jsonschema python3-numpy python3-pip python3-venv rsync shellcheck srecord sudo \
     unzip zip zlib1g-dev && find /var/lib/apt/lists -mindepth 1 -delete
 RUN for tool in clang clang++ clang-cpp llvm-ar llvm-nm llvm-objcopy llvm-strip; do \
       ln -s /usr/bin/$tool-19 /usr/local/bin/$tool; done && \

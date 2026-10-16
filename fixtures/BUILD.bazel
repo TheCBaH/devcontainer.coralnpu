@@ -29,3 +29,64 @@ coralnpu_v2_binary(
     enable_vmem = False,
     stack_size_bytes = 2048,
 )
+
+# Larger-TCM layouts: DTCM moves to 0x100000 for any non-default size.
+TCM_LAYOUTS = {
+    "": (8, 32),
+    "_tcm512k": (512, 512),
+    "_tcm1m": (1024, 1024),
+}
+
+[coralnpu_v2_binary(
+    name = "memory" + suffix,
+    srcs = ["memory.cc"],
+    copts = [
+        "-march=rv32imf_zicsr_zifencei_zbb",
+        "-DCORAL_FAR_CODE_OFFSET=%d" % (0 if itcm == 8 else (itcm - 64) * 1024),
+        "-DCORAL_DATA_BYTES=%d" % (16384 if dtcm == 32 else (dtcm - 64) * 1024),
+        "-DCORAL_MIN_CODE_ADDRESS=%d" % (0 if itcm == 8 else (itcm - 64) * 1024),
+        "-DCORAL_MIN_DATA_ADDRESS=%d" % (0x10000 if dtcm == 32 else 0x100000 + (dtcm - 64) * 1024 - 4),
+    ],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+    itcm_size_kbytes = itcm,
+    dtcm_size_kbytes = dtcm,
+) for suffix, (itcm, dtcm) in TCM_LAYOUTS.items()]
+
+[coralnpu_v2_binary(
+    name = name + "_tcm512k",
+    srcs = [name + ".cc"],
+    copts = copts,
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+    itcm_size_kbytes = 512,
+    dtcm_size_kbytes = 512,
+) for name, copts in [
+    ("scalar", ["-march=rv32imf_zicsr_zifencei_zbb"]),
+    ("rvv", []),
+    ("rvv_fp", []),
+]]
+
+coralnpu_v2_binary(
+    name = "library",
+    srcs = ["library.cc"],
+    copts = ["-march=rv32imf_zicsr_zifencei_zbb"],
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+)
+
+[coralnpu_v2_binary(
+    name = "subsystem_dma" + suffix,
+    srcs = ["subsystem_dma.cc"],
+    copts = ["-march=rv32imf_zicsr_zifencei_zbb"],
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+    itcm_size_kbytes = tcm[0],
+    dtcm_size_kbytes = tcm[1],
+    deps = [
+        "//fpga:dma",
+        "//fpga:uart",
+    ],
+) for suffix, tcm in [("", (8, 32)), ("_tcm1m", (1024, 1024))]]
