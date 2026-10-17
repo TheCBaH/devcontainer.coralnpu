@@ -242,8 +242,9 @@ def standalone(executable, elaboration, header, revision):
             "clock": {"configured_frequency_mhz": None,
                       "note": "Simulation time base only; not a measured FPGA or ASIC frequency"},
             "boot": {
-                "loader": "ELF PT_LOAD segments written through the core AXI slave, read back and compared; "
-                          "--backdoor_load writes TCM segments directly into the SRAM models",
+                "loader": "ELF PT_LOAD TCM segments written through the core AXI slave, read back and compared; "
+                          "--backdoor_load writes TCM segments directly into the SRAM models; testbench RAM "
+                          "segments are loaded directly into the SystemC memory model",
                 "entry": "ELF e_entry written to core CSR base + 4, then clock gate and reset released through "
                          "core CSR base",
                 "steps": [executable + " --binary=<elf> [--cycles=N]"],
@@ -277,9 +278,9 @@ def standalone(executable, elaboration, header, revision):
                    access(None, None, False, True, False), rtl,
                    notes="Run control: +0 clock gate/reset, +4 start PC"),
             region("testbench-ram", "ram", 0x20000000, 4 * MIB, "systemc-array",
-                   "core AXI master to SystemC Xbar", access(True, True, None, None, False),
+                   "core AXI master to SystemC Xbar", access(True, True, None, True, False),
                    "untimed SystemC TLM array behind the RTL AXI handshake",
-                   notes="Xbar accepts accesses ending strictly before 0x20400000"),
+                   notes="Host ELF loading and HTIF buffers can access the full range through the SystemC memory model"),
             region("testbench-uart", "mmio", 0x54000000, 4, "register-file", "core AXI master to SystemC Xbar",
                    access(False, True, False, False, False), "untimed",
                    notes="Bytes written are printed to stdout at each newline"),

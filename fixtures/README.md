@@ -26,6 +26,7 @@ timeouts and printed diagnostic output.
 | `rvv.elf` | Sixteen signed int32 vector additions with loads/stores | `CORAL_RVV_PASS` | V2, M3, M4, RVV/VME RTL |
 | `rvv_fp.elf` | Sixteen FP32 vector additions and FP32-to-BF16 conversion | `CORAL_RVV_FP_PASS` | M3, M4, RVV/VME RTL |
 | `matrix.elf` | Zvt configuration, tile zeroing, signed INT8/FP32/BF16 multiplication and integer accumulation | `CORAL_MATRIX_PASS` | M4, VME RTL |
+| `host_ram.elf`, `host_ram_tcm512k.elf` | Initialized external PT_LOAD, external HTIF packet/buffers, stdin round trip and the last RAM word | `CORAL_HOST_RAM_PASS` | All standalone simulators; RTL frontdoor and backdoor loading |
 | `exit_status.elf`, `exit_status_tcm512k.elf` | Guest status 0/5/77, raw syscall 93, ebreak, mpause, cycle limit | `CORAL_EXIT_STATUS_PASS` | All standalone simulators |
 | `trap_address.elf`, `trap_address_tcm512k.elf` | ITCM store-fault byte addresses at three offsets, plus an unmapped-load control | `CORAL_TRAP_ADDRESS_PASS` | All applicable standalone RTL and MPACT |
 | `memory.elf` | Copies a 16 KiB DTCM buffer to testbench RAM at `0x20000000` and back | `CORAL_MEMORY_PASS` | V2, M3, M4, default-TCM RTL |
@@ -158,3 +159,9 @@ guest execution. MPACT currently still needs an external timeout for loops.
 `host-contract.sh` checks these outcomes, including an RTL cycle limit during
 startup. It uses `timeout --preserve-status` so an external kill cannot pass
 the cycle-limit exit test.
+
+`host_ram.elf` has an initialized `.host_ram` section linked at `0x20000000`.
+Its HTIF packet and I/O buffer also reside there. `host-contract.sh` supplies
+16 input bytes and checks the initialized output and successful round trip.
+The RTL host path rejects HTIF accesses outside TCM and testbench RAM without
+issuing a transaction through the AXI checker.

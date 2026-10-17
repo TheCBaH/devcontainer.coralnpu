@@ -17,6 +17,9 @@ int main() {
     case 'x':
       htif_syscall_6args(93, 5, 0, 0, 0, 0, 0);
       break;
+    case 'w': return write(1, reinterpret_cast<const void*>(0x30000004u), 4) == -1 ? 0 : 1;
+    case 'r': return read(0, reinterpret_cast<void*>(0x30000004u), 1) == -1 ? 0 : 1;
+    case 'o': return write(1, reinterpret_cast<const void*>(0xfffffffcu), 8) == -1 ? 0 : 1;
     case 'b': asm volatile("ebreak"); break;
     case 'p': asm volatile(".word 0x08000073"); break;
     case 'l': while (true) asm volatile("nop");
