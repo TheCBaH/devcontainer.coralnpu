@@ -47,6 +47,7 @@ for path in "$root"/bin/*; do
     expect_status 0 w "${args[@]}"
     expect_status 0 rZ "${args[@]}"
     expect_status 0 o "${args[@]}"
+    expect_status 0 h "${args[@]}"
     expect_status 124 l "${args[@]}"
     expect_status 124 '' "$path" --cycles=1 --binary="$root/examples/$elf"
     expect_status 126 '' "$path" --binary="$scratch/missing.elf"
