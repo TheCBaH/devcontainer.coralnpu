@@ -5,8 +5,8 @@ external-memory and host-I/O defects were fixed. Most waveform observability
 suggestions remain open.** Missing highmem examples and missing MPACT file
 descriptor tracking were contradicted for the shipped release.
 
-Implementation baseline: main/devel `272565e`; executable changes were tested
-at `339330f`. Changes between those revisions are Markdown only. This report
+Original host-contract implementation baseline: `272565e`; executable
+changes were tested at `339330f`. Changes between those revisions are Markdown only. This report
 records that implementation rather than promising that all proposals below
 have been completed.
 
@@ -93,6 +93,7 @@ submodule revisions were not advanced for these fixes.
 | Reject invalid buffers before allocation | [0016](../patches/0016-validate-htif-buffer-ranges.patch); commit `97ba648` | Unmapped/overflowing buffers and a rejected 2 GiB request. |
 | Keep shared guest runtime scalar-compatible | [0017](../patches/0017-scalar-semihosting-runtime.patch); commit `339330f` | File-I/O fixture runs on scalar RTL without trapping on vectorized `strlen`. |
 | Ensure source patches actually apply | `scripts/build.py`; commit `03396d7` | Reproduced nested-cache Git discovery; verified patch application in the actual directory layout, then compiled in CI. |
+| Demonstrate small TCM with a large initialized payload | `external_payload.elf`, packaged source and compatibility metadata; commit `82cbfa8` | 1 MiB file-backed payload, 256-byte working tile, both RTL loading modes, MPACT V2, full checksum and final-byte corruption rejection. |
 
 Standalone status codes now preserve the low eight bits of a guest HTIF
 exit. Normal `mpause` returns 0; RTL cycle limits return 124, fault/abnormal
@@ -112,7 +113,10 @@ data at 0x20000000**. The guest processes every word through a 256-byte tile
 and reports checksum `2287547e`; it never stages the entire payload in DTCM.
 Build validation checks the ELF segment sizes and addresses. Archive checks
 cover ordinary/backdoor RTL loading, MPACT V2, and rejection of a payload
-whose final byte was corrupted. Validation of this follow-up is pending CI.
+whose final byte was corrupted. These emulator checks passed on x86_64 and
+ARM64, in Ubuntu 24.04 and Debian 13, in
+[run 39042853966](https://github.com/TheCBaH/devcontainer.coralnpu/actions/runs/39042853966)
+for fixture revision `82cbfa8`.
 
 ```sh
 bin/core_mini_axi_sim --cycles=20000000 \
@@ -123,6 +127,11 @@ The expected marker is
 `CORAL_EXTERNAL_PAYLOAD_PASS bytes=1048576 tile=256 checksum=2287547e`.
 The fixture and compatibility metadata ship in the emulator binary bundle;
 see the [packaged example README](../fixtures/README.md) for details.
+
+Verified bundles containing the new ELF:
+[x86_64](https://github.com/TheCBaH/devcontainer.coralnpu/actions/runs/39042853966/artifacts/12105581754),
+[ARM64](https://github.com/TheCBaH/devcontainer.coralnpu/actions/runs/39042853966/artifacts/12105775656).
+The guest ELF has the same bytes on both host architectures.
 
 ## Bundled highmem and external-payload examples
 
@@ -158,18 +167,25 @@ not imply that external ELF preloading already worked in v0.0.2.
 
 ## Validation and limits
 
-[Actions run 39039228043](https://github.com/TheCBaH/devcontainer.coralnpu/actions/runs/39039228043)
-passed all nine jobs: guest fixtures, the ARM tool image, emulator/library/
-subsystem archives on x86_64 and ARM64, and manifest aggregation. Archive
-checks ran in Ubuntu 24.04 and Debian 13. The standalone regressions cover
-all ten configurations with compatible guest layouts. Both payload ELFs
-passed on scalar and RVV highmem in both host architectures and both
-runtime containers.
+[Actions run 39042853966](https://github.com/TheCBaH/devcontainer.coralnpu/actions/runs/39042853966)
+passed all nine jobs for executable/fixture revision `82cbfa8`: guest fixtures,
+the ARM tool image, emulator/library/subsystem archives on x86_64 and ARM64,
+and manifest aggregation. Archive checks ran in Ubuntu 24.04 and Debian 13.
+The original host-contract implementation had also passed all nine jobs in
+[run 39039228043](https://github.com/TheCBaH/devcontainer.coralnpu/actions/runs/39039228043)
+at `339330f`.
 
-Verified CI emulator bundles:
-[x86_64](https://github.com/TheCBaH/devcontainer.coralnpu/actions/runs/39039228043/artifacts/12103951180),
-[ARM64](https://github.com/TheCBaH/devcontainer.coralnpu/actions/runs/39039228043/artifacts/12103896946).
-These artifacts were built at `339330f`; later documentation is available in
+The standalone regressions cover all ten configurations with compatible guest
+layouts. Both highmem payload ELFs passed on scalar and RVV highmem in both
+host architectures and runtime containers. The new small-TCM 1 MiB fixture
+passed on base scalar RTL and MPACT V2 in both architectures and containers;
+the checks include both RTL loading modes and rejection of final-byte
+corruption.
+
+Verified CI emulator bundles containing the new example:
+[x86_64](https://github.com/TheCBaH/devcontainer.coralnpu/actions/runs/39042853966/artifacts/12105581754),
+[ARM64](https://github.com/TheCBaH/devcontainer.coralnpu/actions/runs/39042853966/artifacts/12105775656).
+These artifacts were built at `82cbfa8`; later documentation is available in
 the repository. No new release tag was published for this work.
 
 Coralview `24a55dc` was also built in a Codespace. Its `check`, `commits`,
