@@ -10,7 +10,7 @@ expect_status() {
   local expected=$1 input=$2 status
   shift 2
   printf '%s' "$input" >stdin
-  if timeout --preserve-status --kill-after=5 60 "$@" <stdin >stdout 2>stderr; then
+  if timeout --preserve-status --kill-after=5 "${CORAL_HOST_TIMEOUT:-60}" "$@" <stdin >stdout 2>stderr; then
     status=0
   else
     status=$?
@@ -121,4 +121,48 @@ for path in "$root"/bin/*; do
     test "$(cat stdout)" = $'CORAL_STDOUT_ONLY\nCORAL_HOST_IO_PASS'
   fi
   echo "CORAL_RESULT bin/$sim $elf pass"
+done
+
+for sim in core_mini_axi_sim coralnpu_v2_sim; do
+  args=("$root/bin/$sim")
+  if [ "$sim" = core_mini_axi_sim ]; then
+    args+=(--cycles=20000000 --binary="$root/examples/external_payload.elf")
+  else
+    args+=(--semihost_htif --exit_on_ebreak "$root/examples/external_payload.elf")
+  fi
+  CORAL_HOST_TIMEOUT=600 expect_status 0 '' "${args[@]}"
+  grep -q 'CORAL_EXTERNAL_PAYLOAD_PASS bytes=1048576 tile=256 checksum=2287547e' stdout
+  if [ "$sim" = core_mini_axi_sim ]; then
+    CORAL_HOST_TIMEOUT=600 expect_status 0 '' "${args[@]}" --backdoor_load
+    grep -q 'checksum=2287547e' stdout
+  fi
+  echo "CORAL_RESULT bin/$sim external_payload.elf pass"
+done
+
+cp "$root/examples/external_payload.elf" corrupt-payload.elf
+payload_phoff=$(od -An -tu4 -j28 -N4 corrupt-payload.elf)
+payload_phnum=$(od -An -tu2 -j44 -N2 corrupt-payload.elf)
+payload_found=false
+for ((i=0; i<payload_phnum; i++)); do
+  offset=$((payload_phoff + i*32))
+  address=$(od -An -tu4 -j"$((offset+12))" -N4 corrupt-payload.elf)
+  if [ "$address" -eq 536870912 ]; then
+    payload_offset=$(od -An -tu4 -j"$((offset+4))" -N4 corrupt-payload.elf)
+    payload_filesz=$(od -An -tu4 -j"$((offset+16))" -N4 corrupt-payload.elf)
+    test "$payload_filesz" -eq 1048576
+    printf '\000' | dd of=corrupt-payload.elf bs=1 seek="$((payload_offset + payload_filesz - 1))" conv=notrunc status=none
+    payload_found=true
+    break
+  fi
+done
+test "$payload_found" = true
+for sim in core_mini_axi_sim coralnpu_v2_sim; do
+  if [ "$sim" = core_mini_axi_sim ]; then
+    args=("$root/bin/$sim" --cycles=20000000 --binary="$scratch/corrupt-payload.elf")
+  else
+    args=("$root/bin/$sim" --semihost_htif --exit_on_ebreak "$scratch/corrupt-payload.elf")
+  fi
+  CORAL_HOST_TIMEOUT=600 expect_status 125 '' "${args[@]}"
+  grep -q CORAL_EXTERNAL_PAYLOAD_FAIL stdout
+  ! grep -q CORAL_EXTERNAL_PAYLOAD_PASS stdout
 done

@@ -29,6 +29,27 @@ bin/rvv_core_mini_highmem_axi_sim --trace \
 The reported timeouts are evidence of unsuitable invocations, not absent
 fixtures. Repeat coralview's trace validation with the compatible examples.
 
+### Small local memory with a large external payload
+
+The follow-up `examples/external_payload.elf` uses the base scalar
+configuration: **8 KiB ITCM, 32 KiB DTCM, and a 1 MiB initialized external
+ELF payload at 0x20000000**. It processes every word through a 256-byte
+working tile and checks the result, without staging the whole payload in
+DTCM. This is the small-local-memory use case; it does not require a
+highmem core configuration.
+
+```sh
+bin/core_mini_axi_sim --cycles=20000000 \
+  --binary=examples/external_payload.elf
+```
+
+Expected: status 0 and
+`CORAL_EXTERNAL_PAYLOAD_PASS bytes=1048576 tile=256 checksum=2287547e`.
+See the packaged [example README](../fixtures/README.md) for both loading
+modes, the MPACT V2 command, ELF layout checks and corruption coverage.
+This new fixture demonstrates the repaired external-loading path; the
+existing highmem examples below establish the earlier release's coverage.
+
 ### Concrete payload examples in the emulator binary bundle
 
 The emulator archive includes these ELF files under `examples/`, alongside

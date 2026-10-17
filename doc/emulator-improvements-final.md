@@ -104,6 +104,26 @@ The source changes do not implement the open waveform enhancements above.
 The startup redesign is a termination fix and a narrower response to O13;
 it is not proof of deterministic kernel timing.
 
+## Follow-up: small TCM with a 1 MiB initialized payload
+
+Added after the implementation baseline above: `examples/external_payload.elf`
+uses **8 KiB ITCM and 32 KiB DTCM** while its ELF stores **1 MiB of initialized
+data at 0x20000000**. The guest processes every word through a 256-byte tile
+and reports checksum `2287547e`; it never stages the entire payload in DTCM.
+Build validation checks the ELF segment sizes and addresses. Archive checks
+cover ordinary/backdoor RTL loading, MPACT V2, and rejection of a payload
+whose final byte was corrupted. Validation of this follow-up is pending CI.
+
+```sh
+bin/core_mini_axi_sim --cycles=20000000 \
+  --binary=examples/external_payload.elf
+```
+
+The expected marker is
+`CORAL_EXTERNAL_PAYLOAD_PASS bytes=1048576 tile=256 checksum=2287547e`.
+The fixture and compatibility metadata ship in the emulator binary bundle;
+see the [packaged example README](../fixtures/README.md) for details.
+
 ## Bundled highmem and external-payload examples
 
 Both host-architecture emulator bundles include these ELF files and their
