@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / ".cache/source"
 FIXTURES = ("scalar", "rvv", "rvv_fp", "matrix", "memory", "memory_tcm512k", "memory_tcm1m",
             "scalar_tcm512k", "rvv_tcm512k", "rvv_fp_tcm512k", "library", "subsystem_dma",
-            "subsystem_dma_tcm1m")
+            "subsystem_dma_tcm1m", "trap_address", "trap_address_tcm512k")
 # Linker layouts shipped with the archives, taken from these fixtures.
 LINKER_LAYOUTS = {
     "itcm8k_dtcm32k.ld": "memory_ITCM8KB_DTCM32KB_STACK2048_HEAPDTCM.ld",

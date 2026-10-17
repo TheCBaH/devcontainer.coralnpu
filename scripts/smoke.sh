@@ -37,11 +37,13 @@ for sim in core_mini_axi_sim rvv_core_mini_axi_sim vme_core_mini_axi_sim; do
   test -n "$waveform"
   test -s "$waveform"
   echo "FST waveform generated: $waveform ($(stat -c %s "$waveform") bytes)"
+  rtl CORAL_TRAP_ADDRESS_PASS "$sim" trap_address.elf
   rtl CORAL_MEMORY_PASS "$sim" memory.elf
 done
 for sim in coralnpu_v2_sim coralnpu_m3_sim coralnpu_m4_sim; do
   mpact CORAL_SCALAR_PASS "$sim" scalar.elf
   mpact CORAL_RVV_PASS "$sim" rvv.elf
+  mpact CORAL_TRAP_ADDRESS_PASS "$sim" trap_address.elf
   mpact CORAL_MEMORY_PASS "$sim" memory.elf
 done
 for sim in rvv_core_mini_axi_sim vme_core_mini_axi_sim; do
@@ -55,6 +57,7 @@ mpact CORAL_MATRIX_PASS coralnpu_m4_sim matrix.elf
 rtl CORAL_MATRIX_PASS vme_core_mini_axi_sim matrix.elf
 for sim in core_mini_itcm512kb_dtcm512kb_axi_sim core_mini_highmem_axi_sim \
     rvv_core_mini_itcm512kb_dtcm512kb_axi_sim rvv_core_mini_highmem_axi_sim; do
+  rtl CORAL_TRAP_ADDRESS_PASS "$sim" trap_address_tcm512k.elf
   rtl CORAL_SCALAR_PASS "$sim" scalar_tcm512k.elf
   rtl CORAL_MEMORY_PASS "$sim" memory_tcm512k.elf 20000000
 done
