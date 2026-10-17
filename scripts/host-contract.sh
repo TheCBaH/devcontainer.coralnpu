@@ -96,3 +96,27 @@ for path in "$root"/bin/*; do
   fi
   echo "CORAL_RESULT bin/$sim $elf pass"
 done
+
+for path in "$root"/bin/*; do
+  sim=${path##*/}
+  case "$sim" in
+    *highmem*|*512kb*) elf=host_io_tcm512k.elf ;;
+    *) elf=host_io.elf ;;
+  esac
+  if [[ "$sim" = coralnpu_* ]]; then
+    args=("$path" --semihost_htif --exit_on_ebreak "$root/examples/$elf")
+  else
+    args=("$path" --cycles=100000 --binary="$root/examples/$elf")
+  fi
+  expect_status 0 '' "${args[@]}"
+  grep -q CORAL_STDOUT_ONLY stdout
+  grep -q CORAL_STDERR_ONLY stderr
+  ! grep -q CORAL_STDERR_ONLY stdout
+  ! grep -q CORAL_STDOUT_ONLY stderr
+  grep -q CORAL_HOST_IO_PASS stdout
+  test "$(cat coral-host-io.tmp)" = ok
+  if [[ "$sim" = coralnpu_* ]]; then
+    test "$(cat stdout)" = $'CORAL_STDOUT_ONLY\nCORAL_HOST_IO_PASS'
+  fi
+  echo "CORAL_RESULT bin/$sim $elf pass"
+done
