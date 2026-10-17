@@ -191,8 +191,10 @@ def prepare():
     SOURCE.mkdir(parents=True, exist_ok=True)
     subprocess.run(["rsync", "-a", "--delete", "--exclude=.git", "--exclude=bazel-*",
                     str(ROOT / "coralnpu") + "/", str(SOURCE) + "/"], check=True)
+    # Keep Git from interpreting patch paths relative to the wrapper repository.
+    patch_env = dict(os.environ, GIT_CEILING_DIRECTORIES=str(SOURCE.parent))
     for patch in sorted((ROOT / "patches").glob("*.patch")):
-        subprocess.run(["git", "apply", str(patch)], cwd=SOURCE, check=True)
+        subprocess.run(["git", "apply", "--verbose", str(patch)], cwd=SOURCE, env=patch_env, check=True)
     (SOURCE / "internal/netlist_test").mkdir(parents=True, exist_ok=True)
     (SOURCE / "internal/netlist_test/BUILD.bazel").write_text("")
     shutil.copytree(ROOT / "fixtures", SOURCE / "portable_fixtures", dirs_exist_ok=True)
