@@ -6,13 +6,14 @@ import platform
 import re
 import shutil
 import subprocess
+import struct
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / ".cache/source"
 FIXTURES = ("scalar", "rvv", "rvv_fp", "matrix", "memory", "memory_tcm512k", "memory_tcm1m",
             "scalar_tcm512k", "rvv_tcm512k", "rvv_fp_tcm512k", "library", "subsystem_dma",
-            "subsystem_dma_tcm1m", "trap_address", "trap_address_tcm512k", "exit_status", "exit_status_tcm512k", "host_ram", "host_ram_tcm512k", "host_io", "host_io_tcm512k")
+            "subsystem_dma_tcm1m", "trap_address", "trap_address_tcm512k", "exit_status", "exit_status_tcm512k", "host_ram", "host_ram_tcm512k", "host_io", "host_io_tcm512k", "external_payload")
 # Linker layouts shipped with the archives, taken from these fixtures.
 LINKER_LAYOUTS = {
     "itcm8k_dtcm32k.ld": "memory_ITCM8KB_DTCM32KB_STACK2048_HEAPDTCM.ld",
@@ -142,6 +143,27 @@ def build_subsystems():
     return {"files": files, "elaboration": models, "runtime": runtime}
 
 
+def validate_external_payload(path):
+    elf = path.read_bytes()
+    if elf[:7] != b"\x7fELF\x01\x01\x01":
+        raise RuntimeError("External payload fixture must be ELF32 little-endian")
+    phoff, = struct.unpack_from("<I", elf, 28)
+    phsize, phnum = struct.unpack_from("<HH", elf, 42)
+    external = []
+    for i in range(phnum):
+        kind, _, vaddr, addr, filesz, memsz, _, _ = struct.unpack_from("<8I", elf, phoff + i * phsize)
+        if kind != 1:
+            continue
+        if addr == 0x20000000:
+            external.append((vaddr, filesz, memsz))
+        elif not ((addr < 8192 and addr + memsz <= 8192) or
+                  (0x10000 <= addr and addr + memsz <= 0x18000)):
+            raise RuntimeError("External payload fixture exceeds small TCM layout")
+    if external != [(0x20000000, 1048576, 1048576)]:
+        raise RuntimeError("Expected a 1 MiB initialized external payload: " + repr(external))
+    print("External payload: 1 MiB PT_LOAD at 0x20000000; ITCM <= 8 KiB, DTCM <= 32 KiB", flush=True)
+
+
 def main():
     command = sys.argv[1]
     if command == "prepare":
@@ -153,6 +175,7 @@ def main():
         for name in FIXTURES:
             output_file = bazel("cquery", "//portable_fixtures:" + name + ".elf", "-c", "opt", "--output=files")
             copy_output(SOURCE / output_file.splitlines()[-1], ROOT / "fixtures" / (name + ".elf"))
+        validate_external_payload(ROOT / "fixtures/external_payload.elf")
         for layout, script in LINKER_LAYOUTS.items():
             label = "//portable_fixtures:" + script
             bazel("build", "-c", "opt", label)
@@ -160,7 +183,7 @@ def main():
         output_base = Path(run("bazel", "--output_user_root=" + str(ROOT / ".cache/bazel"),
                                "info", "output_base"))
         objdump, = (output_base / "external").glob("*toolchain_coralnpu_v2/bin/riscv64-unknown-elf-objdump")
-        for name in ("scalar", "scalar_tcm512k", "memory", "memory_tcm512k", "memory_tcm1m", "library"):
+        for name in ("scalar", "scalar_tcm512k", "memory", "memory_tcm512k", "memory_tcm1m", "library", "external_payload"):
             disassembly = run(str(objdump), "-d", str(ROOT / "fixtures" / (name + ".elf")))
             vector = re.search(r"^\s*[0-9a-f]+:\s+[0-9a-f]+\s+(v\S+)", disassembly, re.MULTILINE)
             if vector:

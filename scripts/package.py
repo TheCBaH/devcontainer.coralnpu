@@ -29,6 +29,8 @@ EXAMPLES = {
                                        "mpact-m4"], "itcm8k_dtcm32k.ld"),
         "rvv_fp.elf": ("CORAL_RVV_FP_PASS", ["rvv-core-mini-axi", "vme-core-mini-axi", "mpact-m3", "mpact-m4"],
                        "itcm8k_dtcm32k.ld"),
+        "external_payload.elf": ("CORAL_EXTERNAL_PAYLOAD_PASS", ["core-mini-axi", "mpact-v2"],
+                                 "itcm8k_dtcm32k.ld"),
         "matrix.elf": ("CORAL_MATRIX_PASS", ["vme-core-mini-axi", "mpact-m4"], "itcm8k_dtcm32k.ld"),
         "host_io.elf": ("CORAL_HOST_IO_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
                                                "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
