@@ -34,14 +34,15 @@ for path in "$root"/bin/*; do
     esac
     args=("$path" --cycles=100000 --binary="$root/examples/$elf")
   fi
-  for mode in 0 5 7 x b p; do
+  for mode in 0 5 7 x b p t; do
     case "$mode" in
       0|p) expected=0 ;;
       5|x) expected=5 ;;
-      7) expected=77 ;;
+      7|t) expected=77 ;;
       b) expected=125 ;;
     esac
     expect_status "$expected" "$mode" "${args[@]}"
+    if [ "$mode" = 0 ]; then grep -q CORAL_EXIT_STATUS_PASS stdout; fi
   done
   if [[ "$sim" != coralnpu_* ]]; then
     expect_status 0 w "${args[@]}"

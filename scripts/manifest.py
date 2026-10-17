@@ -275,7 +275,7 @@ def standalone(executable, elaboration, header, revision):
             region("dtcm", "dtcm", dtcm_base, dtcm, "rtl-sram", "core data TCM; host access through core AXI slave",
                    access(True, True, None, True, False), rtl),
             region("core-csr", "csr", csr_base, 4 * KIB, "register-file", "core AXI slave",
-                   access(None, None, False, True, False), rtl,
+                   access(None, None, False, False, False), rtl,
                    notes="Run control: +0 clock gate/reset, +4 start PC"),
             region("testbench-ram", "ram", 0x20000000, 4 * MIB, "systemc-array",
                    "core AXI master to SystemC Xbar", access(True, True, None, True, False),
