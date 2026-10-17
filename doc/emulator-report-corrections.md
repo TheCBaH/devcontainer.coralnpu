@@ -26,6 +26,54 @@ bin/rvv_core_mini_highmem_axi_sim --trace \
 The reported timeouts are evidence of unsuitable invocations, not absent
 fixtures. Repeat coralview's trace validation with the compatible examples.
 
+### Concrete payload examples in the emulator binary bundle
+
+The emulator archive includes these ELF files under `examples/`, alongside
+its `bin/` simulators and `examples/README.md`:
+
+| ELF | Memory exercised | Expected output |
+| --- | --- | --- |
+| `memory_tcm1m.elf` | Code above 960 KiB in ITCM; a 960 KiB DTCM buffer copied through external RAM at `0x20000000` and back | `CORAL_MEMORY_PASS` |
+| `host_ram_tcm512k.elf` | An initialized external ELF segment at `0x20000000`, containing a data payload and HTIF packet/buffer; host input round trip and the final RAM word at `0x203ffffc` | `RAM_INITIALIZED`, then `CORAL_HOST_RAM_PASS` |
+
+`memory_tcm1m.elf` is already present in release v0.0.2. Its
+[published fixture results](https://github.com/TheCBaH/devcontainer.coralnpu/releases/download/v0.0.2/coralnpu-emulators-linux-x86_64.fixture-results.json)
+record successful runs on both scalar and RVV highmem simulators, in Debian
+13 and Ubuntu 24.04. This is the concrete counterexample to missing highmem
+examples. Its buffers are checked every 16 words and at the final word.
+
+`host_ram_tcm512k.elf` is added by the host-memory fixes and ships in the
+updated emulator bundle. Its external segment has nonzero file size: the
+loader supplies the initial `RAM_INITIALIZED` bytes from the ELF. The guest
+then reads and writes that payload in external RAM and uses an external HTIF
+packet. This separately demonstrates the repaired external ELF-loading path;
+it is not evidence that release v0.0.2 already supported that path.
+
+Run from the extracted **updated emulator archive** root:
+
+```sh
+bin/core_mini_highmem_axi_sim --cycles=20000000 \
+  --binary=examples/memory_tcm1m.elf
+
+printf '0123456789abcdef' | bin/core_mini_highmem_axi_sim --cycles=100000 \
+  --binary=examples/host_ram_tcm512k.elf
+```
+
+Both commands should exit 0 and print their success markers. Replace the
+simulator with `bin/rvv_core_mini_highmem_axi_sim` to test the RVV highmem
+configuration with the same scalar guest ELFs. The manifest lists each
+ELF's compatible configurations. The archive includes their sources under
+`provenance/fixtures/` and linker layouts under `linker/`.
+
+Here, **highmem** selects 1 MiB ITCM and 1 MiB DTCM; DTCM starts at
+`0x100000`. The standalone emulator's external region is a 4 MiB SystemC RAM
+model at `0x20000000`–`0x203fffff`. The far function executes from ITCM;
+the external payload is data. The separate simulator-library archive models
+1 GiB DDR at `0x80000000`–`0xbfffffff`; its `examples/library.elf` and
+`examples/library_example` exercise payloads near both ends. That library
+example requires its host harness and shared library. These models establish
+functional memory access, rather than physical DRAM timing.
+
 ## The shipped MPACT already retains opened descriptors
 
 The last bullet of host-contract item 8 describes a real omission in the

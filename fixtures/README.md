@@ -68,6 +68,34 @@ The VME RTL simulator adds the experimental matrix engine. M3/M4 are MPACT
 functional models; RVV/VME RTL are separate implementations whose complete
 instruction subsets are not established as equivalent by these smoke tests.
 
+## Highmem and initialized external payloads
+
+The emulator binary bundle includes both of these ELF files; run from its
+extracted root:
+
+```sh
+bin/core_mini_highmem_axi_sim --cycles=20000000 \
+  --binary=examples/memory_tcm1m.elf
+printf '0123456789abcdef' | bin/core_mini_highmem_axi_sim --cycles=100000 \
+  --binary=examples/host_ram_tcm512k.elf
+```
+
+The first prints `CORAL_MEMORY_PASS`: it executes code above 960 KiB in
+ITCM and checks a 960 KiB DTCM buffer copied through external RAM and back,
+sampling every 16 words plus the final word. The second loads initialized
+`RAM_INITIALIZED` bytes from an external ELF segment at `0x20000000`, uses
+external HTIF packet/buffers, reads the supplied 16 input bytes, checks the
+last external RAM word, and prints `CORAL_HOST_RAM_PASS`. Both exit 0.
+Use `rvv_core_mini_highmem_axi_sim` for the same checks on RVV highmem RTL.
+
+Highmem provides 1 MiB ITCM and 1 MiB DTCM, with DTCM at `0x100000`.
+Standalone external memory is a 4 MiB SystemC RAM model at `0x20000000`.
+The separate simulator-library bundle provides the 1 GiB DDR model at
+`0x80000000`; run its `examples/library_example` harness with
+`examples/library.elf` as described above. These are functional memory
+models. The highmem example fetches code from ITCM and uses external RAM
+for data.
+
 ## Expected calculations
 
 `scalar.elf` checks `1.25 + 2.5 == 3.75`. `rvv.elf` checks every element of
