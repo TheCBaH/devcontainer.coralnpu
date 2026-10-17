@@ -71,10 +71,6 @@ jobs:
     needs: fixtures
     runs-on: ubuntu-24.04
     timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      matrix:
-        archive: [emulators, libraries, subsystem]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -102,7 +98,7 @@ jobs:
       - name: Cache ID
         id: cache-id
         run: |
-          echo "prefix=bazel-${{ runner.arch }}-${{ matrix.archive }}" >> "$GITHUB_OUTPUT"
+          echo "prefix=bazel-${{ runner.arch }}" >> "$GITHUB_OUTPUT"
           echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
       - name: Cache Bazel inputs and actions
         id: bazel-cache
@@ -115,22 +111,21 @@ jobs:
           restore-keys: |
             ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-
             ${{ steps.cache-id.outputs.prefix }}-
-            bazel-${{ runner.arch }}-
       - name: Build and package
-        run: $EXEC make package ARCHIVES=${{ matrix.archive }}
+        run: $EXEC make package
       - name: Test external archives
         run: make test
       - name: Upload verified archives
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.archive }}-x86_64
+          name: archives-x86_64
           path: dist/*
           if-no-files-found: error
       - name: Preserve failed archives
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: diagnostics-${{ matrix.archive }}-x86_64
+          name: diagnostics-x86_64
           path: dist/*
           if-no-files-found: ignore
       - name: Save Bazel cache
@@ -152,10 +147,6 @@ jobs:
     needs: fixtures
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      matrix:
-        archive: [emulators, libraries, subsystem]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -183,7 +174,7 @@ jobs:
       - name: Cache ID
         id: cache-id
         run: |
-          echo "prefix=bazel-${{ runner.arch }}-${{ matrix.archive }}" >> "$GITHUB_OUTPUT"
+          echo "prefix=bazel-${{ runner.arch }}" >> "$GITHUB_OUTPUT"
           echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
       - name: Cache Bazel inputs and actions
         id: bazel-cache
@@ -196,22 +187,21 @@ jobs:
           restore-keys: |
             ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-
             ${{ steps.cache-id.outputs.prefix }}-
-            bazel-${{ runner.arch }}-
       - name: Build and package
-        run: $EXEC make package ARCHIVES=${{ matrix.archive }}
+        run: $EXEC make package
       - name: Test external archives
         run: make test
       - name: Upload verified archives
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.archive }}-aarch64
+          name: archives-aarch64
           path: dist/*
           if-no-files-found: error
       - name: Preserve failed archives
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: diagnostics-${{ matrix.archive }}-aarch64
+          name: diagnostics-aarch64
           path: dist/*
           if-no-files-found: ignore
       - name: Save Bazel cache
