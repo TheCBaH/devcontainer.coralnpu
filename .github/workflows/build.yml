@@ -99,6 +99,11 @@ jobs:
         with:
           name: guest-fixtures
           path: fixtures
+      - name: Cache ID
+        id: cache-id
+        run: |
+          echo "prefix=bazel-${{ runner.arch }}-${{ matrix.archive }}" >> "$GITHUB_OUTPUT"
+          echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
       - name: Cache Bazel inputs and actions
         id: bazel-cache
         uses: actions/cache/restore@v6
@@ -106,10 +111,11 @@ jobs:
           path: |
             .cache/repos
             .cache/actions
-          key: bazel-x86_64-${{ matrix.archive }}-${{ hashFiles('.gitmodules', 'patches/**', '.devcontainer/**', 'scripts/**', 'fixtures/**') }}-${{ github.sha }}
+          key: ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-${{ hashFiles('patches/**', 'mpact-patches/**', '.devcontainer/**', 'scripts/build.py') }}
           restore-keys: |
-            bazel-x86_64-${{ matrix.archive }}-
-            bazel-x86_64-
+            ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-
+            ${{ steps.cache-id.outputs.prefix }}-
+            bazel-${{ runner.arch }}-
       - name: Build and package
         run: $EXEC make package ARCHIVES=${{ matrix.archive }}
       - name: Test external archives
@@ -134,10 +140,13 @@ jobs:
           path: |
             .cache/repos
             .cache/actions
-          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}
+          # A failed build must not claim the stable key.
+          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}${{ job.status != 'success' && format('-partial-{0}', github.run_id) || '' }}
       - name: Disk usage
         if: always()
-        run: df -h
+        run: |
+          df -h
+          du -sh .cache/repos .cache/actions || true
   aarch64:
     if: ${{ !inputs.x86_only }}
     needs: fixtures
@@ -171,6 +180,11 @@ jobs:
         with:
           name: guest-fixtures
           path: fixtures
+      - name: Cache ID
+        id: cache-id
+        run: |
+          echo "prefix=bazel-${{ runner.arch }}-${{ matrix.archive }}" >> "$GITHUB_OUTPUT"
+          echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
       - name: Cache Bazel inputs and actions
         id: bazel-cache
         uses: actions/cache/restore@v6
@@ -178,10 +192,11 @@ jobs:
           path: |
             .cache/repos
             .cache/actions
-          key: bazel-aarch64-${{ matrix.archive }}-${{ hashFiles('.gitmodules', 'patches/**', '.devcontainer/**', 'scripts/**', 'fixtures/**') }}-${{ github.sha }}
+          key: ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-${{ hashFiles('patches/**', 'mpact-patches/**', '.devcontainer/**', 'scripts/build.py') }}
           restore-keys: |
-            bazel-aarch64-${{ matrix.archive }}-
-            bazel-aarch64-
+            ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-
+            ${{ steps.cache-id.outputs.prefix }}-
+            bazel-${{ runner.arch }}-
       - name: Build and package
         run: $EXEC make package ARCHIVES=${{ matrix.archive }}
       - name: Test external archives
@@ -206,10 +221,13 @@ jobs:
           path: |
             .cache/repos
             .cache/actions
-          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}
+          # A failed build must not claim the stable key.
+          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}${{ job.status != 'success' && format('-partial-{0}', github.run_id) || '' }}
       - name: Disk usage
         if: always()
-        run: df -h
+        run: |
+          df -h
+          du -sh .cache/repos .cache/actions || true
   manifests:
     needs: [x86_64, aarch64]
     runs-on: ubuntu-24.04
