@@ -1,0 +1,49 @@
+diff --git a/riscv/riscv32_htif_semihost.cc b/riscv/riscv32_htif_semihost.cc
+index ab99ed6..4357002 100644
+--- a/riscv/riscv32_htif_semihost.cc
++++ b/riscv/riscv32_htif_semihost.cc
+@@ -110,6 +110,7 @@ void RiscV32HtifSemiHost::StoreEvent(uint64_t address, int size) {
+   // If the payload lsb is 1, then it's the end of the run. Halt (but don't
+   // catch fire!).
+   if (payload & 0x1) {
++    exit_code_ = payload >> 1;
+     if (halt_callback_ != nullptr) halt_callback_();
+     payload_db->DecRef();
+     ready_db->DecRef();
+@@ -230,6 +231,7 @@ void RiscV32HtifSemiHost::StoreEvent(uint64_t address, int size) {
+       data_db->DecRef();
+     } break;
+     case 93:  // sys_exit
++      exit_code_ = parameter_span[1];
+       if (halt_callback_ != nullptr) halt_callback_();
+       break;
+     default:
+diff --git a/riscv/riscv32_htif_semihost.h b/riscv/riscv32_htif_semihost.h
+index 59430a2..76d80f8 100644
+--- a/riscv/riscv32_htif_semihost.h
++++ b/riscv/riscv32_htif_semihost.h
+@@ -16,6 +16,7 @@
+ #define MPACT_RISCV_RISCV_RISCV32_HTIF_SEMIHOST_H_
+ 
+ #include <cstdint>
++#include <optional>
+ #include <string>
+ 
+ #include "absl/container/flat_hash_map.h"
+@@ -56,6 +57,8 @@ class RiscV32HtifSemiHost {
+ 
+   ~RiscV32HtifSemiHost();
+ 
++  std::optional<uint64_t> exit_code() const { return exit_code_; }
++
+   // Set magic addresses.
+   void SetMagicAddresses(const SemiHostAddresses& magic_addresses);
+   // Set the halt callback.
+@@ -68,6 +71,7 @@ class RiscV32HtifSemiHost {
+  private:
+   // A local data buffer factory.
+   generic::DataBufferFactory db_factory_;
++  std::optional<uint64_t> exit_code_;
+   HaltCallback halt_callback_;
+   ErrorCallback error_callback_;
+   // Memory watcher.

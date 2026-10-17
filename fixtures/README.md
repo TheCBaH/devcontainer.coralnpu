@@ -26,6 +26,7 @@ timeouts and printed diagnostic output.
 | `rvv.elf` | Sixteen signed int32 vector additions with loads/stores | `CORAL_RVV_PASS` | V2, M3, M4, RVV/VME RTL |
 | `rvv_fp.elf` | Sixteen FP32 vector additions and FP32-to-BF16 conversion | `CORAL_RVV_FP_PASS` | M3, M4, RVV/VME RTL |
 | `matrix.elf` | Zvt configuration, tile zeroing, signed INT8/FP32/BF16 multiplication and integer accumulation | `CORAL_MATRIX_PASS` | M4, VME RTL |
+| `exit_status.elf`, `exit_status_tcm512k.elf` | Guest status 0/5/77, raw syscall 93, ebreak, mpause, cycle limit | `CORAL_EXIT_STATUS_PASS` | All standalone simulators |
 | `trap_address.elf`, `trap_address_tcm512k.elf` | ITCM store-fault byte addresses at three offsets, plus an unmapped-load control | `CORAL_TRAP_ADDRESS_PASS` | All applicable standalone RTL and MPACT |
 | `memory.elf` | Copies a 16 KiB DTCM buffer to testbench RAM at `0x20000000` and back | `CORAL_MEMORY_PASS` | V2, M3, M4, default-TCM RTL |
 | `memory_tcm512k.elf` | Fetches code at 448 KiB in ITCM; copies a 448 KiB DTCM buffer through testbench RAM | `CORAL_MEMORY_PASS` | 512 KiB and 1 MiB TCM RTL |
@@ -144,3 +145,16 @@ relocation in clean, network-disabled Ubuntu 24.04 and Debian 13 containers on
 both native host architectures. It corrupts the bundled C++ library and checks
 that the loader rejects it. These are functional smoke tests; they do not
 establish exhaustive ISA, rounding/NaN, matrix-shape or RTL conformance coverage.
+
+## Host exit status
+
+Standalone simulators return the low eight bits of a guest HTIF exit status.
+A normal halt (`mpause`) returns 0. RTL returns 124 at its cycle limit; core
+faults and MPACT `--exit_on_ebreak` stops return 125. Load/simulator errors
+return 126. These conventional codes can also be returned by a guest; they
+are not a separate namespace. Traps handled by guest software are ordinary
+guest execution. MPACT currently still needs an external timeout for loops.
+
+`host-contract.sh` checks these outcomes, including an RTL cycle limit during
+startup. It uses `timeout --preserve-status` so an external kill cannot pass
+the cycle-limit exit test.

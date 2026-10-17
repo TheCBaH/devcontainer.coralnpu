@@ -1,1 +1,1 @@
-exports_files(["m4-bf16-decoder.patch", "matrix-altfmt.patch"])
+exports_files(["m4-bf16-decoder.patch", "matrix-altfmt.patch", "htif-exit-status.patch", "host-contract.patch"])

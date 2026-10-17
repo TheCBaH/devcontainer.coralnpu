@@ -30,6 +30,11 @@ EXAMPLES = {
         "rvv_fp.elf": ("CORAL_RVV_FP_PASS", ["rvv-core-mini-axi", "vme-core-mini-axi", "mpact-m3", "mpact-m4"],
                        "itcm8k_dtcm32k.ld"),
         "matrix.elf": ("CORAL_MATRIX_PASS", ["vme-core-mini-axi", "mpact-m4"], "itcm8k_dtcm32k.ld"),
+        "exit_status.elf": ("CORAL_EXIT_STATUS_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
+                                                        "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
+        "exit_status_tcm512k.elf": ("CORAL_EXIT_STATUS_PASS", ["core-mini-itcm512kb-dtcm512kb-axi",
+            "core-mini-highmem-axi", "rvv-core-mini-itcm512kb-dtcm512kb-axi", "rvv-core-mini-highmem-axi"],
+            "itcm512k_dtcm512k.ld"),
         "trap_address.elf": ("CORAL_TRAP_ADDRESS_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
                                                         "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
         "trap_address_tcm512k.elf": ("CORAL_TRAP_ADDRESS_PASS", ["core-mini-itcm512kb-dtcm512kb-axi",
@@ -223,6 +228,7 @@ def package(kind):
     runtime = []
     if kind == "emulators":
         shutil.copy2(ROOT / "scripts/smoke.sh", bundle / "smoke.sh")
+        shutil.copy2(ROOT / "scripts/host-contract.sh", bundle / "host-contract.sh")
     elif kind == "libraries":
         include = bundle / "include/hw_sim"
         include.mkdir(parents=True)

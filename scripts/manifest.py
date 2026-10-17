@@ -248,11 +248,9 @@ def standalone(executable, elaboration, header, revision):
                          "core CSR base",
                 "steps": [executable + " --binary=<elf> [--cycles=N]"],
             },
-            "termination": "Exits after an HTIF exit through the ELF tohost symbol or a core halt or fault; "
-                           "status 0 only when the core did not fault and the HTIF exit code is 0. A missing or "
-                           "unreadable ELF aborts with a nonzero status. Reaching --cycles stops the SystemC "
-                           "kernel but the process keeps waiting for a halt, so callers need an external timeout. "
-                           "HTIF detection snoops the core debug ports.",
+            "termination": "Returns the low 8 bits of the guest HTIF exit code, 0 for a normal core halt, "
+                           "124 for the cycle limit, 125 for a core fault, and 126 for a load/simulator error. "
+                           "Guest exits may use the same numeric codes. HTIF detection snoops core debug ports.",
             "runtime_overrides": [
                 {"flag": "--binary", "default": "", "changes_configuration": False,
                  "description": "Guest ELF; its segments must lie in the regions marked host_load"},
@@ -347,9 +345,9 @@ def mpact(executable, revision):
             "boot": {"loader": "MPACT ELF loader writes PT_LOAD segments directly into functional memory",
                      "entry": "ELF e_entry unless --entry_point is given",
                      "steps": [executable + " --semihost_htif --exit_on_ebreak <elf>"]},
-            "termination": "Runs until the guest halts, an HTIF exit with --semihost_htif, or ebreak with "
-                           "--exit_on_ebreak; the process exits 0 after a completed run even when the guest exit "
-                           "code is nonzero, and nonzero when the ELF cannot be loaded.",
+            "termination": "Returns the low 8 bits of the guest HTIF exit code, 0 for mpause, 125 for "
+                           "ebreak with --exit_on_ebreak or another abnormal halt, and 126 for a load/simulator "
+                           "error. Guest exits may use the same numeric codes; traps may continue executing.",
             "runtime_overrides": [
                 {"flag": "--allow_memory_region", "default": ["0x0:0x2000:rx", "0x10000:0x8000:rw",
                                                               "0x20000000:0x400000:rw"],

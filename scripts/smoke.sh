@@ -82,4 +82,5 @@ for sim in "$root"/bin/*; do
   test "$status" -ne 124
   test "$status" -ne 127
 done
+bash "$root/host-contract.sh"
 echo "External scalar, RVV, vector FP, matrix, memory and invalid-input checks passed"
