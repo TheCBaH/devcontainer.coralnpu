@@ -34,7 +34,8 @@ int main() {
     asm volatile("sw zero, 0(%0)" : : "r"(addr) : "memory");
     if (trap_values[0] != 7 || trap_values[2] != addr) return 1;
   }
-  asm volatile("lw zero, 0(%0)" : : "r"(0x30000004u) : "memory");
+  uint32_t loaded;
+  asm volatile("lw %0, 0(%1)" : "=r"(loaded) : "r"(0x30000004u) : "memory");
   if (trap_values[0] != 5 || trap_values[2] != 0x30000004u) return 2;
   static const char message[] = "CORAL_TRAP_ADDRESS_PASS\n";
   write(1, message, sizeof(message) - 1);

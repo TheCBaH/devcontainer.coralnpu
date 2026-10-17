@@ -97,3 +97,6 @@ instruction intervals vary after aligning traces at reset release or first
 retirement. The original asynchronous setup supports the first explanation;
 it does not alone establish the second. Fixed input and aligned repeated
 runs are needed before calling kernel timing nondeterministic.
+
+Further runtime findings from the new regressions are recorded in
+[emulator-runtime-findings.md](emulator-runtime-findings.md).
