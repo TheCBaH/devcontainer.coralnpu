@@ -112,3 +112,26 @@ coralnpu_v2_binary(
     itcm_size_kbytes = tcm[0],
     dtcm_size_kbytes = tcm[1],
 ) for suffix, tcm in [("", (8, 32)), ("_tcm512k", (512, 512))]]
+
+[coralnpu_v2_binary(
+    name = "host_ram" + suffix,
+    srcs = ["host_ram.cc"],
+    copts = ["-march=rv32imf_zicsr_zifencei_zbb"],
+    linkopts = ["-Wl,--section-start=.host_ram=0x20000000"],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+    itcm_size_kbytes = tcm[0],
+    dtcm_size_kbytes = tcm[1],
+) for suffix, tcm in [("", (8, 32)), ("_tcm512k", (512, 512))]]
+
+[coralnpu_v2_binary(
+    name = "host_io" + suffix,
+    srcs = ["host_io.cc"],
+    copts = ["-march=rv32imf_zicsr_zifencei_zbb"],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+    itcm_size_kbytes = tcm[0],
+    dtcm_size_kbytes = tcm[1],
+) for suffix, tcm in [("", (8, 32)), ("_tcm512k", (512, 512))]]

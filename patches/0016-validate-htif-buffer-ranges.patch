@@ -1,0 +1,57 @@
+--- a/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
++++ b/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
+@@ -619,6 +619,10 @@
+           int flags = static_cast<int>(words[4]);
+           int mode = static_cast<int>(words[5]);
+ 
++          if (!InTcm(name_addr, name_len) && !Xbar::ContainsMemoryRange(name_addr, name_len)) {
++            resp_val = -1;
++            break;
++          }
+           std::vector<char> name(name_len + 1, 0);
+           trans.set_command(tlm::TLM_READ_COMMAND);
+           trans.set_address(name_addr);
+@@ -668,6 +672,10 @@
+           uint64_t guest_fd = words[1];
+           uint64_t buf_addr = words[2];
+           size_t buf_len = static_cast<size_t>(words[3]);
++          if (!InTcm(buf_addr, buf_len) && !Xbar::ContainsMemoryRange(buf_addr, buf_len)) {
++            resp_val = -1;
++            break;
++          }
+           std::vector<uint8_t> buf(buf_len);
+           ssize_t bytes_read;
+           if (guest_fd == 0) {
+@@ -703,6 +711,10 @@
+           uint64_t guest_fd = words[1];
+           uint64_t buf_addr = words[2];
+           size_t buf_len = static_cast<size_t>(words[3]);
++          if (!InTcm(buf_addr, buf_len) && !Xbar::ContainsMemoryRange(buf_addr, buf_len)) {
++            resp_val = -1;
++            break;
++          }
+           std::vector<uint8_t> buf(buf_len);
+           trans.set_command(tlm::TLM_READ_COMMAND);
+           trans.set_address(buf_addr);
+@@ -737,6 +749,10 @@
+           uint64_t buf_addr = words[2];
+           size_t buf_len = static_cast<size_t>(words[3]);
+           off_t offset = static_cast<off_t>(words[4]);
++          if (!InTcm(buf_addr, buf_len) && !Xbar::ContainsMemoryRange(buf_addr, buf_len)) {
++            resp_val = -1;
++            break;
++          }
+           std::vector<uint8_t> buf(buf_len);
+           ssize_t bytes_read = pread(host_fd, buf.data(), buf_len, offset);
+           if (bytes_read > 0) {
+@@ -767,6 +783,10 @@
+           uint64_t buf_addr = words[2];
+           size_t buf_len = static_cast<size_t>(words[3]);
+           off_t offset = static_cast<off_t>(words[4]);
++          if (!InTcm(buf_addr, buf_len) && !Xbar::ContainsMemoryRange(buf_addr, buf_len)) {
++            resp_val = -1;
++            break;
++          }
+           std::vector<uint8_t> buf(buf_len);
+           trans.set_command(tlm::TLM_READ_COMMAND);
+           trans.set_address(buf_addr);

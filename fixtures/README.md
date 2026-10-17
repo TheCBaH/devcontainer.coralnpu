@@ -26,6 +26,8 @@ timeouts and printed diagnostic output.
 | `rvv.elf` | Sixteen signed int32 vector additions with loads/stores | `CORAL_RVV_PASS` | V2, M3, M4, RVV/VME RTL |
 | `rvv_fp.elf` | Sixteen FP32 vector additions and FP32-to-BF16 conversion | `CORAL_RVV_FP_PASS` | M3, M4, RVV/VME RTL |
 | `matrix.elf` | Zvt configuration, tile zeroing, signed INT8/FP32/BF16 multiplication and integer accumulation | `CORAL_MATRIX_PASS` | M4, VME RTL |
+| `host_io.elf`, `host_io_tcm512k.elf` | File create/append/truncate/exclusive-open/read/close and separated stdout/stderr | `CORAL_HOST_IO_PASS` | All standalone simulators |
+| `host_ram.elf`, `host_ram_tcm512k.elf` | Initialized external PT_LOAD, external HTIF packet/buffers, stdin round trip and the last RAM word | `CORAL_HOST_RAM_PASS` | All standalone simulators; RTL frontdoor and backdoor loading |
 | `exit_status.elf`, `exit_status_tcm512k.elf` | Guest status 0/5/77, raw syscall 93, ebreak, mpause, cycle limit | `CORAL_EXIT_STATUS_PASS` | All standalone simulators |
 | `trap_address.elf`, `trap_address_tcm512k.elf` | ITCM store-fault byte addresses at three offsets, plus an unmapped-load control | `CORAL_TRAP_ADDRESS_PASS` | All applicable standalone RTL and MPACT |
 | `memory.elf` | Copies a 16 KiB DTCM buffer to testbench RAM at `0x20000000` and back | `CORAL_MEMORY_PASS` | V2, M3, M4, default-TCM RTL |
@@ -65,6 +67,34 @@ simulator runs scalar programs; the RVV RTL simulator adds vector execution.
 The VME RTL simulator adds the experimental matrix engine. M3/M4 are MPACT
 functional models; RVV/VME RTL are separate implementations whose complete
 instruction subsets are not established as equivalent by these smoke tests.
+
+## Highmem and initialized external payloads
+
+The emulator binary bundle includes both of these ELF files; run from its
+extracted root:
+
+```sh
+bin/core_mini_highmem_axi_sim --cycles=20000000 \
+  --binary=examples/memory_tcm1m.elf
+printf '0123456789abcdef' | bin/core_mini_highmem_axi_sim --cycles=100000 \
+  --binary=examples/host_ram_tcm512k.elf
+```
+
+The first prints `CORAL_MEMORY_PASS`: it executes code above 960 KiB in
+ITCM and checks a 960 KiB DTCM buffer copied through external RAM and back,
+sampling every 16 words plus the final word. The second loads initialized
+`RAM_INITIALIZED` bytes from an external ELF segment at `0x20000000`, uses
+external HTIF packet/buffers, reads the supplied 16 input bytes, checks the
+last external RAM word, and prints `CORAL_HOST_RAM_PASS`. Both exit 0.
+Use `rvv_core_mini_highmem_axi_sim` for the same checks on RVV highmem RTL.
+
+Highmem provides 1 MiB ITCM and 1 MiB DTCM, with DTCM at `0x100000`.
+Standalone external memory is a 4 MiB SystemC RAM model at `0x20000000`.
+The separate simulator-library bundle provides the 1 GiB DDR model at
+`0x80000000`; run its `examples/library_example` harness with
+`examples/library.elf` as described above. These are functional memory
+models. The highmem example fetches code from ITCM and uses external RAM
+for data.
 
 ## Expected calculations
 
@@ -158,3 +188,15 @@ guest execution. MPACT currently still needs an external timeout for loops.
 `host-contract.sh` checks these outcomes, including an RTL cycle limit during
 startup. It uses `timeout --preserve-status` so an external kill cannot pass
 the cycle-limit exit test.
+
+`host_ram.elf` has an initialized `.host_ram` section linked at `0x20000000`.
+Its HTIF packet and I/O buffer also reside there. `host-contract.sh` supplies
+16 input bytes and checks the initialized output and successful round trip.
+The RTL host path rejects HTIF accesses outside TCM and testbench RAM without
+issuing a transaction through the AXI checker.
+
+`host_io.elf` calls the shipped newlib runtime's `open`, which translates flags
+to Linux values before constructing the HTIF packet. Both backends accept that
+packet ABI. The regression checks append after seeking, truncation, exclusive
+creation, descriptor reuse, and separate output streams. MPACT simulator
+banners go to stderr, leaving stdout for guest output.

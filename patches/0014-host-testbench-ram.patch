@@ -1,0 +1,295 @@
+diff --git a/tests/systemc/Xbar.h b/tests/systemc/Xbar.h
+index d4d70b49..32c3cc97 100644
+--- a/tests/systemc/Xbar.h
++++ b/tests/systemc/Xbar.h
+@@ -32,12 +32,16 @@ class Xbar : sc_core::sc_module {
+ 
+   tlm_utils::simple_target_socket<Xbar>& socket() { return socket_; }
+ 
++  static bool ContainsMemoryRange(uint64_t addr, size_t len) {
++    return addr >= kMemoryAddr && len <= kMemorySizeBytes &&
++           addr - kMemoryAddr <= kMemorySizeBytes - len;
++  }
++
+   void b_transport(tlm::tlm_generic_payload& trans, sc_core::sc_time& delay) {
+     sc_dt::uint64 addr = trans.get_address();
+     unsigned int len = trans.get_data_length();
+ 
+-    if (((addr & kMemoryAddr) == kMemoryAddr) &&
+-        (addr + len < kMemoryAddr + kMemorySizeBytes)) {
++    if (ContainsMemoryRange(addr, len)) {
+       memory_b_transport_(trans, delay);
+     } else if (addr == kUartAddr) {
+       uart_b_transport_(trans, delay);
+diff --git a/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc b/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
+index bf1ae895..fd800e7d 100644
+--- a/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
++++ b/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
+@@ -316,6 +316,25 @@ void CoreMiniAxi_tb::Connect() {
+   core_->io_axi_slave_write_resp_bits_resp(tlm2axi_signals_.bresp);
+ }
+ 
++bool CoreMiniAxi_tb::InTcm(uint64_t addr, size_t len) const {
++  constexpr uint64_t itcm_size = KP_itcmSizeKBytes * 1024;
++  constexpr uint64_t dtcm_size = KP_dtcmSizeKBytes * 1024;
++  constexpr uint64_t dtcm_base = (KP_itcmSizeKBytes == 8 && KP_dtcmSizeKBytes == 32) ? 0x10000 : 0x100000;
++  return (addr <= itcm_size && len <= itcm_size - addr) ||
++         (addr >= dtcm_base && addr - dtcm_base <= dtcm_size &&
++          len <= dtcm_size - (addr - dtcm_base));
++}
++
++void CoreMiniAxi_tb::HostTransport(tlm::tlm_generic_payload& trans, sc_time& delay) {
++  if (Xbar::ContainsMemoryRange(trans.get_address(), trans.get_data_length())) {
++    xbar_.b_transport(trans, delay);
++  } else if (InTcm(trans.get_address(), trans.get_data_length())) {
++    tohost_initiator_socket_->b_transport(trans, delay);
++  } else {
++    trans.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
++  }
++}
++
+ absl::Status CoreMiniAxi_tb::LoadElfSync(const std::string& file_name) {
+   CHECK_OK(LoadElfAsync(file_name));
+   absl::MutexLock lock(&transfer_queue_mtx_);
+@@ -339,18 +358,61 @@ absl::Status CoreMiniAxi_tb::LoadElfAsync(const std::string& file_name) {
+ 
+   uint8_t* data8 = reinterpret_cast<uint8_t*>(file_data);
+   if (file_size >= SELFMAG && std::memcmp(file_data, ELFMAG, SELFMAG) == 0) {
++    auto valid_elf = [&](auto* header, auto* phdr, auto* shdr, auto* sym) {
++      const uint64_t size = file_size;
++      if (size < sizeof(*header) || header->e_ehsize != sizeof(*header) ||
++          header->e_ident[EI_DATA] != ELFDATA2LSB ||
++          header->e_phentsize != sizeof(*phdr) || header->e_phoff > size ||
++          header->e_phnum > (size - header->e_phoff) / sizeof(*phdr) ||
++          header->e_shoff > size ||
++          (header->e_shnum && header->e_shentsize != sizeof(*shdr)) ||
++          header->e_shnum > (size - header->e_shoff) / sizeof(*shdr)) return false;
++      for (unsigned i = 0; i < header->e_phnum; ++i) {
++        auto* segment = reinterpret_cast<decltype(phdr)>(data8 + header->e_phoff) + i;
++        if (segment->p_type != PT_LOAD) continue;
++        if (segment->p_filesz > segment->p_memsz || segment->p_offset > size ||
++            segment->p_filesz > size - segment->p_offset ||
++            (!InTcm(segment->p_paddr, segment->p_memsz) &&
++             !Xbar::ContainsMemoryRange(segment->p_paddr, segment->p_memsz))) return false;
++      }
++      for (unsigned i = 0; i < header->e_shnum; ++i) {
++        auto* section = reinterpret_cast<decltype(shdr)>(data8 + header->e_shoff) + i;
++        if (section->sh_type == SHT_NOBITS) continue;
++        if (section->sh_offset > size || section->sh_size > size - section->sh_offset ||
++            (section->sh_type == SHT_SYMTAB && section->sh_entsize != sizeof(*sym))) return false;
++      }
++      return true;
++    };
++    bool valid = file_size >= EI_NIDENT &&
++        ((data8[EI_CLASS] == ELFCLASS32 && valid_elf(static_cast<Elf32_Ehdr*>(file_data),
++            static_cast<Elf32_Phdr*>(nullptr), static_cast<Elf32_Shdr*>(nullptr), static_cast<Elf32_Sym*>(nullptr))) ||
++         (data8[EI_CLASS] == ELFCLASS64 && valid_elf(static_cast<Elf64_Ehdr*>(file_data),
++            static_cast<Elf64_Phdr*>(nullptr), static_cast<Elf64_Shdr*>(nullptr), static_cast<Elf64_Sym*>(nullptr))));
++    if (!valid) {
++      munmap(file_data, file_size);
++      return absl::InvalidArgumentError("Invalid ELF or segment outside host-loadable RAM");
++    }
+     std::vector<DataTransfer> elf_transfers;
+-    uint64_t entry_point = ::LoadElf(data8, [this, &elf_transfers](void *dest, const void *src,
++    absl::Status load_status = absl::OkStatus();
++    uint64_t entry_point = ::LoadElf(data8, [this, &elf_transfers, &load_status](void *dest, const void *src,
+                                                                    size_t count) {
+       uint64_t addr      = reinterpret_cast<uint64_t>(dest);
+-      uint32_t itcm_size = KP_itcmSizeKBytes * 1024;
+-      uint32_t dtcm_size = KP_dtcmSizeKBytes * 1024;
+-      uint32_t dtcm_base = (KP_itcmSizeKBytes == 8 && KP_dtcmSizeKBytes == 32) ? 0x10000 : 0x100000;
+-      bool in_tcm = (addr < itcm_size) || (addr >= dtcm_base && addr < dtcm_base + dtcm_size);
+-
+-      bool use_backdoor = this->backdoor_load_;
+-      if (use_backdoor && in_tcm) {
+-        this->BackdoorLoad(addr, reinterpret_cast<const uint8_t *>(src), count);
++      if (!load_status.ok()) return dest;
++      bool in_tcm = InTcm(addr, count);
++      if (Xbar::ContainsMemoryRange(addr, count)) {
++        tlm::tlm_generic_payload trans;
++        sc_time delay = SC_ZERO_TIME;
++        trans.set_command(tlm::TLM_WRITE_COMMAND);
++        trans.set_address(addr);
++        trans.set_data_ptr(reinterpret_cast<uint8_t*>(const_cast<void*>(src)));
++        trans.set_data_length(count);
++        trans.set_streaming_width(count);
++        HostTransport(trans, delay);
++        if (trans.is_response_error()) load_status = absl::InternalError("Testbench RAM load failed");
++      } else if (!in_tcm) {
++        load_status = absl::InvalidArgumentError("ELF segment outside host-loadable RAM");
++      } else if (backdoor_load_) {
++        BackdoorLoad(addr, reinterpret_cast<const uint8_t *>(src), count);
+       } else {
+         elf_transfers.push_back(utils::Write(reinterpret_cast<uint64_t>(dest),
+                                              reinterpret_cast<uint8_t *>(const_cast<void *>(src)),
+@@ -361,6 +423,10 @@ absl::Status CoreMiniAxi_tb::LoadElfAsync(const std::string& file_name) {
+       }
+       return dest;
+     });
++    if (!load_status.ok()) {
++      munmap(file_data, file_size);
++      return load_status;
++    }
+     uint32_t entry_point_u32 = static_cast<uint32_t>(entry_point);
+     elf_transfers.push_back(utils::Write(
+         csr_addr_ + 0x4, reinterpret_cast<uint8_t *>(&entry_point_u32), sizeof(entry_point_u32)));
+@@ -385,6 +451,10 @@ absl::Status CoreMiniAxi_tb::LoadElfAsync(const std::string& file_name) {
+       fromhost_ready_addr_ = fromhost_ready;
+     }
+   } else {
++    if (static_cast<uint64_t>(file_size) > KP_itcmSizeKBytes * 1024u) {
++      munmap(file_data, file_size);
++      return absl::InvalidArgumentError("Raw binary exceeds ITCM");
++    }
+     // Transaction to fill ITCM with the provided binary.
+     transfer_queue_.push(
+         std::make_unique<TrafficDesc>(utils::merge(std::vector<DataTransfer>(
+@@ -491,7 +561,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+       trans.set_streaming_width(8);
+       trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+       delay = SC_ZERO_TIME;
+-      tohost_initiator_socket_->b_transport(trans, delay);
++      HostTransport(trans, delay);
+ 
+       if (tohost_payload & 1) {
+         tohost_halt = true;
+@@ -514,7 +584,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+     trans.set_dmi_allowed(false);
+     trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+ 
+-    tohost_initiator_socket_->b_transport(trans, delay);
++    HostTransport(trans, delay);
+ 
+     uint64_t resp_val = 0;
+     if (trans.is_response_error()) {
+@@ -530,7 +600,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+         trans.set_streaming_width(8);
+         trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+         delay = SC_ZERO_TIME;
+-        tohost_initiator_socket_->b_transport(trans, delay);
++        HostTransport(trans, delay);
+       }
+ 
+       uint64_t words[8];
+@@ -557,7 +627,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+           trans.set_streaming_width(name_len);
+           trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+           delay = SC_ZERO_TIME;
+-          tohost_initiator_socket_->b_transport(trans, delay);
++          HostTransport(trans, delay);
+           if (trans.is_response_error()) {
+             resp_val = -1;
+           } else {
+@@ -624,7 +694,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+             trans.set_streaming_width(bytes_read);
+             trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+             delay = SC_ZERO_TIME;
+-            tohost_initiator_socket_->b_transport(trans, delay);
++            HostTransport(trans, delay);
+             if (trans.is_response_error()) {
+               LOG(ERROR) << "sys_read buf write error at " << std::hex << buf_addr;
+               resp_val = -1;
+@@ -649,7 +719,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+           trans.set_streaming_width(buf_len);
+           trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+           delay = SC_ZERO_TIME;
+-          tohost_initiator_socket_->b_transport(trans, delay);
++          HostTransport(trans, delay);
+           if (trans.is_response_error()) {
+             LOG(ERROR) << "sys_write buf read error at " << std::hex << buf_addr;
+             resp_val = -1;
+@@ -684,7 +754,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+             trans.set_streaming_width(bytes_read);
+             trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+             delay = SC_ZERO_TIME;
+-            tohost_initiator_socket_->b_transport(trans, delay);
++            HostTransport(trans, delay);
+             if (trans.is_response_error()) {
+               LOG(ERROR) << "sys_pread buf write error at " << std::hex << buf_addr;
+               resp_val = -1;
+@@ -712,7 +782,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+           trans.set_streaming_width(buf_len);
+           trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+           delay = SC_ZERO_TIME;
+-          tohost_initiator_socket_->b_transport(trans, delay);
++          HostTransport(trans, delay);
+           if (trans.is_response_error()) {
+             LOG(ERROR) << "sys_pwrite buf read error at " << std::hex << buf_addr;
+             resp_val = -1;
+@@ -745,7 +815,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+             trans.set_streaming_width(16);
+             trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+             delay = SC_ZERO_TIME;
+-            tohost_initiator_socket_->b_transport(trans, delay);
++            HostTransport(trans, delay);
+ 
+             // Write the string
+             trans.set_command(tlm::TLM_WRITE_COMMAND);
+@@ -754,7 +824,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+             trans.set_data_length(strlen(arg0) + 1);
+             trans.set_streaming_width(strlen(arg0) + 1);
+             trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+-            tohost_initiator_socket_->b_transport(trans, delay);
++            HostTransport(trans, delay);
+ 
+             resp_val = 0; // Success
+           } else {
+@@ -780,11 +850,11 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+     trans.set_streaming_width(4);
+     trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+     delay = SC_ZERO_TIME;
+-    tohost_initiator_socket_->b_transport(trans, delay);
++    HostTransport(trans, delay);
+ 
+     trans.set_address(addr + 4);
+     trans.set_data_ptr(reinterpret_cast<uint8_t*>(&resp_high));
+-    tohost_initiator_socket_->b_transport(trans, delay);
++    HostTransport(trans, delay);
+ 
+     // Write completion response to fromhost.
+     if (fromhost_addr_.has_value()) {
+@@ -800,11 +870,11 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+       trans.set_streaming_width(4);
+       trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+       delay = SC_ZERO_TIME;
+-      tohost_initiator_socket_->b_transport(trans, delay);
++      HostTransport(trans, delay);
+ 
+       trans.set_address(fromhost_addr_.value() + 4);
+       trans.set_data_ptr(reinterpret_cast<uint8_t*>(&resp_high));
+-      tohost_initiator_socket_->b_transport(trans, delay);
++      HostTransport(trans, delay);
+     }
+ 
+     if (fromhost_ready_addr_.has_value()) {
+@@ -816,7 +886,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+       trans.set_streaming_width(8);
+       trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+       delay = SC_ZERO_TIME;
+-      tohost_initiator_socket_->b_transport(trans, delay);
++      HostTransport(trans, delay);
+     }
+ 
+     // Clear tohost_ready if present.
+@@ -829,7 +899,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+       trans.set_streaming_width(8);
+       trans.set_response_status(tlm::TLM_INCOMPLETE_RESPONSE);
+       delay = SC_ZERO_TIME;
+-      tohost_initiator_socket_->b_transport(trans, delay);
++      HostTransport(trans, delay);
+     }
+   }
+ }
+diff --git a/tests/verilator_sim/coralnpu/core_mini_axi_tb.h b/tests/verilator_sim/coralnpu/core_mini_axi_tb.h
+index c143b399..37650037 100644
+--- a/tests/verilator_sim/coralnpu/core_mini_axi_tb.h
++++ b/tests/verilator_sim/coralnpu/core_mini_axi_tb.h
+@@ -254,6 +254,8 @@ struct CoreMiniAxi_tb : Sysc_tb {
+  private:
+   void Connect();
+   void TraceInstructions();
++  bool InTcm(uint64_t addr, size_t len) const;
++  void HostTransport(tlm::tlm_generic_payload& trans, sc_time& delay);
+ 
+   TLMTrafficGenerator tg_;
+ 
