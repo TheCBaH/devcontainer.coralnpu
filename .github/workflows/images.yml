@@ -1,0 +1,34 @@
+name: images
+on:
+  push:
+    branches: ['**']
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+jobs:
+  devcontainer:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Free runner disk
+        run: |
+          sudo find /usr/local/lib/android /usr/share/dotnet /opt/ghc -depth -delete 2>/dev/null || true
+          df -h
+      - name: Development container
+        id: container
+        uses: TheCBaH/devcontainer-action/devcontainer@v1
+        with:
+          cli-version: '0.88.0'
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check tools
+        run: ${{ steps.container.outputs.exec }} bash -c 'firtool --version; clang --version'
