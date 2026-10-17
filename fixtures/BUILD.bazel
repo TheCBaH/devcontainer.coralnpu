@@ -101,3 +101,14 @@ coralnpu_v2_binary(
     itcm_size_kbytes = tcm[0],
     dtcm_size_kbytes = tcm[1],
 ) for suffix, tcm in [("", (8, 32)), ("_tcm512k", (512, 512))]]
+
+[coralnpu_v2_binary(
+    name = "exit_status" + suffix,
+    srcs = ["exit_status.cc"],
+    copts = ["-march=rv32imf_zicsr_zifencei_zbb"],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+    itcm_size_kbytes = tcm[0],
+    dtcm_size_kbytes = tcm[1],
+) for suffix, tcm in [("", (8, 32)), ("_tcm512k", (512, 512))]]

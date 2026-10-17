@@ -1,0 +1,306 @@
+diff --git a/sim/coralnpu_m3_sim.cc b/sim/coralnpu_m3_sim.cc
+index 5a81c26..60c7af5 100644
+--- a/sim/coralnpu_m3_sim.cc
++++ b/sim/coralnpu_m3_sim.cc
+@@ -87,7 +87,7 @@ int main(int argc, char** argv) {
+   argv = &out_args[0];
+   if (argc != 2) {
+     LOG(ERROR) << "Only a single input file allowed";
+-    return -1;
++    return 126;
+   }
+   std::string file_name = argv[1];
+ 
+@@ -104,18 +104,18 @@ int main(int argc, char** argv) {
+     if (parts.size() != 3) {
+       LOG(ERROR) << "Invalid memory region: " << region_str << ". The expected "
+                  << "format is start_address:length:rwx.";
+-      return -1;
++      return 126;
+     }
+     uint32_t start, length;
+     std::string error;
+     if (!absl::ParseFlag(parts[0], &start, &error)) {
+       LOG(ERROR) << "Invalid memory region start: " << parts[0] << " " << error;
+-      return -1;
++      return 126;
+     }
+     if (!absl::ParseFlag(parts[1], &length, &error)) {
+       LOG(ERROR) << "Invalid memory region length: " << parts[1] << " "
+                  << error;
+-      return -1;
++      return 126;
+     }
+     ::coralnpu::sim::MemoryPermission permissions =
+         ::coralnpu::sim::MemoryPermission::kNone;
+@@ -128,7 +128,7 @@ int main(int argc, char** argv) {
+         permissions |= ::coralnpu::sim::MemoryPermission::kExecute;
+       } else {
+         LOG(ERROR) << "Invalid permission char: " << c;
+-        return -1;
++        return 126;
+       }
+     }
+     options.memory_regions.push_back(
+@@ -153,30 +153,30 @@ int main(int argc, char** argv) {
+   if (!load_status.ok()) {
+     LOG(ERROR) << "Error while loading '" << file_name
+                << "': " << load_status.message();
+-    return -1;
++    return 126;
+   }
+ 
+   if (interactive) {
+     simulator.RunInteractive();
+   } else {
+-    std::cout << "Starting simulation\n";
++    std::cerr << "Starting simulation\n";
+     auto t0 = absl::Now();
+     absl::Status run_status = simulator.Run();
+     if (!run_status.ok()) {
+       LOG(ERROR) << "Error during simulation run: " << run_status.message();
+-      return -1;
++      return 126;
+     }
+     absl::Status wait_status = simulator.Wait();
+     if (!wait_status.ok()) {
+       LOG(ERROR) << "Error while waiting for simulation: "
+                  << wait_status.message();
+-      return -1;
++      return 126;
+     }
+     auto sec = absl::ToDoubleSeconds(absl::Now() - t0);
+-    std::cout << "Total cycles: " << simulator.GetCycleCount() << '\n';
+-    std::cout << absl::StrFormat("Simulation done: %0.3f sec\n", sec);
++    std::cerr << "Total cycles: " << simulator.GetCycleCount() << '\n';
++    std::cerr << absl::StrFormat("Simulation done: %0.3f sec\n", sec);
+   }
+ 
+   g_simulator = nullptr;
+-  return 0;
++  return simulator.ExitStatus();
+ }
+diff --git a/sim/coralnpu_m4_sim.cc b/sim/coralnpu_m4_sim.cc
+index cdbc30b..8d40783 100644
+--- a/sim/coralnpu_m4_sim.cc
++++ b/sim/coralnpu_m4_sim.cc
+@@ -94,7 +94,7 @@ int main(int argc, char** argv) {
+   argv = &out_args[0];
+   if (argc != 2) {
+     LOG(ERROR) << "Only a single input file allowed";
+-    return -1;
++    return 126;
+   }
+   std::string file_name = argv[1];
+ 
+@@ -111,18 +111,18 @@ int main(int argc, char** argv) {
+     if (parts.size() != 3) {
+       LOG(ERROR) << "Invalid memory region: " << region_str << ". The expected "
+                  << "format is start_address:length:rwx.";
+-      return -1;
++      return 126;
+     }
+     uint32_t start, length;
+     std::string error;
+     if (!absl::ParseFlag(parts[0], &start, &error)) {
+       LOG(ERROR) << "Invalid memory region start: " << parts[0] << " " << error;
+-      return -1;
++      return 126;
+     }
+     if (!absl::ParseFlag(parts[1], &length, &error)) {
+       LOG(ERROR) << "Invalid memory region length: " << parts[1] << " "
+                  << error;
+-      return -1;
++      return 126;
+     }
+     ::coralnpu::sim::MemoryPermission permissions =
+         ::coralnpu::sim::MemoryPermission::kNone;
+@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
+         permissions |= ::coralnpu::sim::MemoryPermission::kExecute;
+       } else {
+         LOG(ERROR) << "Invalid permission char: " << c;
+-        return -1;
++        return 126;
+       }
+     }
+     options.memory_regions.push_back(
+@@ -160,30 +160,30 @@ int main(int argc, char** argv) {
+   if (!load_status.ok()) {
+     LOG(ERROR) << "Error while loading '" << file_name
+                << "': " << load_status.message();
+-    return -1;
++    return 126;
+   }
+ 
+   if (interactive) {
+     simulator.RunInteractive();
+   } else {
+-    std::cout << "Starting simulation\n";
++    std::cerr << "Starting simulation\n";
+     auto t0 = absl::Now();
+     absl::Status run_status = simulator.Run();
+     if (!run_status.ok()) {
+       LOG(ERROR) << "Error during simulation run: " << run_status.message();
+-      return -1;
++      return 126;
+     }
+     absl::Status wait_status = simulator.Wait();
+     if (!wait_status.ok()) {
+       LOG(ERROR) << "Error while waiting for simulation: "
+                  << wait_status.message();
+-      return -1;
++      return 126;
+     }
+     auto sec = absl::ToDoubleSeconds(absl::Now() - t0);
+-    std::cout << "Total cycles: " << simulator.GetCycleCount() << '\n';
+-    std::cout << absl::StrFormat("Simulation done: %0.3f sec\n", sec);
++    std::cerr << "Total cycles: " << simulator.GetCycleCount() << '\n';
++    std::cerr << absl::StrFormat("Simulation done: %0.3f sec\n", sec);
+   }
+ 
+   g_simulator = nullptr;
+-  return 0;
++  return simulator.ExitStatus();
+ }
+diff --git a/sim/coralnpu_simulator.cc b/sim/coralnpu_simulator.cc
+index 4fb59c6..9dc98b5 100644
+--- a/sim/coralnpu_simulator.cc
++++ b/sim/coralnpu_simulator.cc
+@@ -175,7 +175,7 @@ CoralNPUSimulator::CoralNPUSimulator(const CoralNPUSimulatorOptions& options)
+     // Add a handler to halt the simulation when an mpause instruction is
+     // received.
+     state_->AddMpauseHandler([this](const Instruction* inst) {
+-      std::cout << "mpause instruction received.\n";
++      std::cerr << "mpause instruction received.\n";
+       top_->RequestHalt(HaltReason::kUserRequest, inst);
+       return true;
+     });
+@@ -183,9 +183,10 @@ CoralNPUSimulator::CoralNPUSimulator(const CoralNPUSimulatorOptions& options)
+     // Add a handler to halt the simulation when an ebreak instruction is
+     // received.
+     state_->AddEbreakHandler([this](const Instruction* inst) {
+-      std::cout << "ebreak instruction received. Instruction address: "
++      std::cerr << "ebreak instruction received. Instruction address: "
+                 << absl::StrFormat("0x%08x", inst->address()) << "\n";
+       if (options_.exit_on_ebreak) {
++        ebreak_halt_ = true;
+         top_->RequestHalt(HaltReason::kUserRequest, inst);
+         return true;
+       }
+@@ -269,6 +270,16 @@ absl::Status CoralNPUSimulator::LoadProgram(
+   return top_->WriteRegister("pc", final_entry_point);
+ }
+ 
++int CoralNPUSimulator::ExitStatus() {
++  if (htif_semihost_ && htif_semihost_->exit_code().has_value()) {
++    return htif_semihost_->exit_code().value() & 0xff;
++  }
++  auto reason = top_->GetLastHaltReason();
++  if (!reason.ok()) return 126;
++  if (!ebreak_halt_ && *reason == *HaltReason::kUserRequest) return 0;
++  return 125;
++}
++
+ absl::Status CoralNPUSimulator::Run() { return top_->Run(); }
+ 
+ absl::StatusOr<int> CoralNPUSimulator::Step(int num_steps) {
+diff --git a/sim/coralnpu_simulator.h b/sim/coralnpu_simulator.h
+index 1522f68..4165c0b 100644
+--- a/sim/coralnpu_simulator.h
++++ b/sim/coralnpu_simulator.h
+@@ -129,6 +129,8 @@ class CoralNPUSimulator {
+   // Returns the number of cycles executed.
+   [[nodiscard]] uint64_t GetCycleCount() const;
+ 
++  int ExitStatus();
++
+   // Accessors
+   [[nodiscard]] mpact::sim::riscv::RiscVTop* top() { return top_.get(); }
+   [[nodiscard]] mpact::sim::util::MemoryInterface* memory() {
+@@ -155,6 +157,7 @@ class CoralNPUSimulator {
+   std::unique_ptr<mpact::sim::util::ElfProgramLoader> elf_loader_;
+   std::unique_ptr<mpact::sim::riscv::RiscV32HtifSemiHost> htif_semihost_;
+ 
++  bool ebreak_halt_ = false;
+   CoralNPUSimulatorOptions options_;
+ };
+ 
+diff --git a/sim/coralnpu_v2_sim.cc b/sim/coralnpu_v2_sim.cc
+index b0363c4..381aae9 100644
+--- a/sim/coralnpu_v2_sim.cc
++++ b/sim/coralnpu_v2_sim.cc
+@@ -83,7 +83,7 @@ int main(int argc, char** argv) {
+   argv = &out_args[0];
+   if (argc != 2) {
+     LOG(ERROR) << "Only a single input file allowed";
+-    return -1;
++    return 126;
+   }
+   std::string file_name = argv[1];
+ 
+@@ -99,18 +99,18 @@ int main(int argc, char** argv) {
+     if (parts.size() != 3) {
+       LOG(ERROR) << "Invalid memory region: " << region_str << ". The expected "
+                  << "format is start_address:length:rwx.";
+-      return -1;
++      return 126;
+     }
+     uint32_t start, length;
+     std::string error;
+     if (!absl::ParseFlag(parts[0], &start, &error)) {
+       LOG(ERROR) << "Invalid memory region start: " << parts[0] << " " << error;
+-      return -1;
++      return 126;
+     }
+     if (!absl::ParseFlag(parts[1], &length, &error)) {
+       LOG(ERROR) << "Invalid memory region length: " << parts[1] << " "
+                  << error;
+-      return -1;
++      return 126;
+     }
+     ::coralnpu::sim::MemoryPermission permissions =
+         ::coralnpu::sim::MemoryPermission::kNone;
+@@ -123,7 +123,7 @@ int main(int argc, char** argv) {
+         permissions |= ::coralnpu::sim::MemoryPermission::kExecute;
+       } else {
+         LOG(ERROR) << "Invalid permission char: " << c;
+-        return -1;
++        return 126;
+       }
+     }
+     options.memory_regions.push_back(
+@@ -148,27 +148,29 @@ int main(int argc, char** argv) {
+   if (!load_status.ok()) {
+     LOG(ERROR) << "Error while loading '" << file_name
+                << "': " << load_status.message();
+-    return -1;
++    return 126;
+   }
+ 
+   if (interactive) {
+     simulator.RunInteractive();
+   } else {
+-    std::cout << "Starting simulation\n";
++    std::cerr << "Starting simulation\n";
+     auto t0 = absl::Now();
+     absl::Status run_status = simulator.Run();
+     if (!run_status.ok()) {
+       LOG(ERROR) << run_status.message();
++      return 126;
+     }
+     absl::Status wait_status = simulator.Wait();
+     if (!wait_status.ok()) {
+       LOG(ERROR) << wait_status.message();
++      return 126;
+     }
+     auto sec = absl::ToDoubleSeconds(absl::Now() - t0);
+-    std::cout << "Total cycles: " << simulator.GetCycleCount() << '\n';
+-    std::cout << absl::StrFormat("Simulation done: %0.3f sec\n", sec);
++    std::cerr << "Total cycles: " << simulator.GetCycleCount() << '\n';
++    std::cerr << absl::StrFormat("Simulation done: %0.3f sec\n", sec);
+   }
+ 
+   g_simulator = nullptr;
+-  return 0;
++  return simulator.ExitStatus();
+ }

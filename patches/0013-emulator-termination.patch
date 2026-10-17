@@ -1,0 +1,192 @@
+diff --git a/rules/repo_defs.bzl b/rules/repo_defs.bzl
+index 3c22a026..d17dbad8 100644
+--- a/rules/repo_defs.bzl
++++ b/rules/repo_defs.bzl
+@@ -109,6 +109,7 @@ def define_mpact_repos():
+             "@coralnpu_hw//third_party/coralnpu_mpact:0006-Fix-svdpi-includes.patch",
+             "@coralnpu_hw//third_party/coralnpu_mpact:0007-Add-matrix-tile-DPI-accessors.patch",
+             "@coralnpu_hw//portable_patches:m4-bf16-decoder.patch",
++            "@coralnpu_hw//portable_patches:host-contract.patch",
+         ],
+         patch_args = ["-p1"],
+     )
+diff --git a/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc b/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
+index 4fbe91ad..c27227ff 100644
+--- a/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
++++ b/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
+@@ -18,7 +18,7 @@
+ 
+ #include <optional>
+ #include <string>
+-#include <thread>
++#include <iostream>
+ 
+ #include "absl/flags/flag.h"
+ #include "absl/flags/parse.h"
+@@ -40,18 +40,13 @@ ABSL_FLAG(bool, debug_axi, false, "Enable AXI traffic debugging");
+ ABSL_FLAG(bool, instr_trace, false, "Log instructions to console");
+ ABSL_FLAG(bool, backdoor_load, false, "Enable high-speed backdoor code loading");
+ 
+-static bool run(const char* name, const std::string binary, const int cycles,
++static int run(const char* name, const std::string binary, const int cycles,
+                 const bool trace, const bool debug_axi, const bool instr_trace,
+                 const bool backdoor_load) {
+-  absl::Mutex halted_mtx;
+-  absl::CondVar halted_cv;
+   CoreMiniAxi_tb tb(CoreMiniAxi_tb::kCoreMiniAxiModelName, cycles, /* random= */ false, debug_axi,
+                     instr_trace, backdoor_load,
+                     /*wfi_cb=*/std::nullopt,
+-                    /*halted_cb=*/[&halted_mtx, &halted_cv]() {
+-                      absl::MutexLock lock_(&halted_mtx);
+-                      halted_cv.SignalAll();
+-                    });
++                    /*halted_cb=*/[]() { sc_stop(); });
+   // Ensure we call sc_start @0 time, before we startup anything else.
+   // This allows Verilog `initial` blocks to run before we try to interact with the
+   // DUT model.
+@@ -61,24 +56,19 @@ static bool run(const char* name, const std::string binary, const int cycles,
+     tb.trace(tb.core());
+   }
+ 
+-  std::thread sc_main_thread([&tb]() { tb.start(); });
+-
+-  CHECK_OK(tb.LoadElfSync(binary));
+-  CHECK_OK(tb.ClockGateSync(false));
+-  CHECK_OK(tb.ResetAsync(false));
+-
+-  {
+-    absl::MutexLock lock_(&halted_mtx);
+-    halted_cv.Wait(&halted_mtx);
+-  }
+-
+-  if (!tb.io_fault && !tb.tohost_halt) {
+-    CHECK_OK(tb.CheckStatusSync());
++  auto load_status = tb.LoadElfAsync(binary);
++  if (!load_status.ok()) {
++    LOG(ERROR) << load_status.message();
++    return 126;
+   }
++  CHECK_OK(tb.ClockGateAsync(false));
++  CHECK_OK(tb.ResetAsync(false));
++  tb.start();
+ 
+-  sc_stop();
+-  sc_main_thread.join();
+-  return (!tb.io_fault && !(tb.tohost_halt && tb.tohost_val != 1));
++  if (tb.tohost_halt) return tb.tohost_val & 0xff;
++  if (tb.io_fault) return 125;
++  if (tb.cycle_limit_reached()) return 124;
++  return 0;
+ }
+ 
+ extern "C" int sc_main(int argc, char** argv) {
+@@ -93,11 +83,16 @@ extern "C" int sc_main(int argc, char** argv) {
+ 
+   if (absl::GetFlag(FLAGS_binary) == "") {
+     LOG(ERROR) << "--binary is required!";
+-    return -1;
++    return 126;
+   }
+ 
+-  return run(Sysc_tb::get_name(argv[0]), absl::GetFlag(FLAGS_binary),
+-      absl::GetFlag(FLAGS_cycles), absl::GetFlag(FLAGS_trace),
+-      absl::GetFlag(FLAGS_debug_axi), absl::GetFlag(FLAGS_instr_trace),
+-      absl::GetFlag(FLAGS_backdoor_load)) ? 0 : 1;
++  try {
++    return run(Sysc_tb::get_name(argv[0]), absl::GetFlag(FLAGS_binary),
++        absl::GetFlag(FLAGS_cycles), absl::GetFlag(FLAGS_trace),
++        absl::GetFlag(FLAGS_debug_axi), absl::GetFlag(FLAGS_instr_trace),
++        absl::GetFlag(FLAGS_backdoor_load));
++  } catch (const sc_core::sc_report& report) {
++    std::cerr << report.what() << '\n';
++    return 126;
++  }
+ }
+diff --git a/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc b/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
+index a8f96f82..bf1ae895 100644
+--- a/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
++++ b/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
+@@ -326,16 +326,19 @@ absl::Status CoreMiniAxi_tb::LoadElfSync(const std::string& file_name) {
+ absl::Status CoreMiniAxi_tb::LoadElfAsync(const std::string& file_name) {
+   absl::MutexLock lock(&transfer_queue_mtx_);
+   int fd = open(file_name.c_str(), 0);
+-  CHECK(fd > 0);
++  if (fd < 0) return absl::NotFoundError("Cannot open guest binary: " + file_name);
+   struct stat sb;
+-  CHECK(fstat(fd, &sb) == 0);
++  if (fstat(fd, &sb) != 0 || sb.st_size <= 0) {
++    close(fd);
++    return absl::InvalidArgumentError("Cannot read guest binary: " + file_name);
++  }
+   auto file_size = sb.st_size;
+   auto file_data = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+-  CHECK(file_data != MAP_FAILED);
+   close(fd);
++  if (file_data == MAP_FAILED) return absl::InternalError("Cannot map guest binary: " + file_name);
+ 
+   uint8_t* data8 = reinterpret_cast<uint8_t*>(file_data);
+-  if (std::memcmp(file_data, ELFMAG, SELFMAG) == 0) {
++  if (file_size >= SELFMAG && std::memcmp(file_data, ELFMAG, SELFMAG) == 0) {
+     std::vector<DataTransfer> elf_transfers;
+     uint64_t entry_point = ::LoadElf(data8, [this, &elf_transfers](void *dest, const void *src,
+                                                                    size_t count) {
+@@ -492,7 +495,7 @@ void CoreMiniAxi_tb::tohost_reader_thread() {
+ 
+       if (tohost_payload & 1) {
+         tohost_halt = true;
+-        tohost_val = static_cast<uint32_t>(tohost_payload);
++        tohost_val = static_cast<uint32_t>(tohost_payload >> 1);
+         continue;
+       }
+       addr = tohost_payload;
+@@ -858,7 +861,7 @@ void CoreMiniAxi_tb::posedge() {
+     if (wdata0 == 0) return;
+     if (wdata0 & 1) {
+       tohost_halt = true;
+-      tohost_val = wdata0;
++      tohost_val = wdata0 >> 1;
+     } else {
+       tohost_read_addr_ = wdata0;
+       tohost_read_event_.notify();
+diff --git a/tests/verilator_sim/sysc_tb.h b/tests/verilator_sim/sysc_tb.h
+index 3b6b24c4..290a8009 100644
+--- a/tests/verilator_sim/sysc_tb.h
++++ b/tests/verilator_sim/sysc_tb.h
+@@ -144,6 +144,8 @@ struct Sysc_tb : public sc_module {
+     }
+   }
+ 
++  bool cycle_limit_reached() const { return cycle_limit_reached_; }
++
+   void start() {
+     init();
+ 
+@@ -251,7 +253,8 @@ struct Sysc_tb : public sc_module {
+   const int loops_;
+   int loop_;
+   bool error_;
+-  bool started_;
++  bool started_ = false;
++  bool cycle_limit_reached_ = false;
+ 
+   sc_in<bool> clock_;
+ 
+@@ -286,6 +289,7 @@ struct Sysc_tb : public sc_module {
+       loop_++;
+     } else {
+       printf("\nInfo: loop limit \"%d\" reached\n", loops_);
++      cycle_limit_reached_ = true;
+       sc_stop();
+     }
+   }
+diff --git a/third_party/patches/patches.bzl b/third_party/patches/patches.bzl
+index fba96e03..5df26e99 100644
+--- a/third_party/patches/patches.bzl
++++ b/third_party/patches/patches.bzl
+@@ -27,4 +27,5 @@ MPACT_RISCV_PATCHES = [
+ ] + [
+     "@coralnpu_hw//third_party/patches:" + patch
+     for patch in MPACT_RISCV_PATCH_FILES
+-] + ["@coralnpu_hw//portable_patches:matrix-altfmt.patch"]
++] + ["@coralnpu_hw//portable_patches:matrix-altfmt.patch",
++     "@coralnpu_hw//portable_patches:htif-exit-status.patch"]
