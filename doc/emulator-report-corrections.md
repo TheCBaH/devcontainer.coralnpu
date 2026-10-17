@@ -1,5 +1,8 @@
 # Corrections to the emulator reports
 
+For the complete ranking, implementation status and validation results, see
+[the final improvement report](emulator-improvements-final.md).
+
 Source review of release v0.0.2, wrapper `4708669`, Coral `9f31e14e`,
 and MPACT `7670ee4c`. These corrections concern
 `coralnpu_emulator_issues.md` and coralview's `doc/emulator-improvements.md`.
