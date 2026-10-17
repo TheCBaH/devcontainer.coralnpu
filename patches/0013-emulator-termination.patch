@@ -148,37 +148,6 @@ index a8f96f82..bf1ae895 100644
      } else {
        tohost_read_addr_ = wdata0;
        tohost_read_event_.notify();
-diff --git a/tests/verilator_sim/sysc_tb.h b/tests/verilator_sim/sysc_tb.h
-index 3b6b24c4..290a8009 100644
---- a/tests/verilator_sim/sysc_tb.h
-+++ b/tests/verilator_sim/sysc_tb.h
-@@ -144,6 +144,8 @@ struct Sysc_tb : public sc_module {
-     }
-   }
- 
-+  bool cycle_limit_reached() const { return cycle_limit_reached_; }
-+
-   void start() {
-     init();
- 
-@@ -251,7 +253,8 @@ struct Sysc_tb : public sc_module {
-   const int loops_;
-   int loop_;
-   bool error_;
--  bool started_;
-+  bool started_ = false;
-+  bool cycle_limit_reached_ = false;
- 
-   sc_in<bool> clock_;
- 
-@@ -286,6 +289,7 @@ struct Sysc_tb : public sc_module {
-       loop_++;
-     } else {
-       printf("\nInfo: loop limit \"%d\" reached\n", loops_);
-+      cycle_limit_reached_ = true;
-       sc_stop();
-     }
-   }
 diff --git a/third_party/patches/patches.bzl b/third_party/patches/patches.bzl
 index fba96e03..5df26e99 100644
 --- a/third_party/patches/patches.bzl
@@ -190,3 +159,51 @@ index fba96e03..5df26e99 100644
 -] + ["@coralnpu_hw//portable_patches:matrix-altfmt.patch"]
 +] + ["@coralnpu_hw//portable_patches:matrix-altfmt.patch",
 +     "@coralnpu_hw//portable_patches:htif-exit-status.patch"]
+diff --git a/tests/verilator_sim/sysc_tb.h b/tests/verilator_sim/sysc_tb.h
+index 3b6b24c4..996d3627 100644
+--- a/tests/verilator_sim/sysc_tb.h
++++ b/tests/verilator_sim/sysc_tb.h
+@@ -144,17 +144,20 @@ struct Sysc_tb : public sc_module {
+     }
+   }
+ 
++  bool cycle_limit_reached() const { return cycle_limit_reached_; }
++
+   void start() {
+     init();
+ 
+     reset = 1;
+     resetn = 0;
+     sc_start(4.75, SC_NS);  // falling edge of clock
+-    reset = 0;
+-    resetn = 1;
+-
+-    started_ = true;
+-    sc_start();
++    if (!cycle_limit_reached_) {
++      reset = 0;
++      resetn = 1;
++      started_ = true;
++      sc_start();
++    }
+ 
+     if (tf_) {
+       tf_->dump(sim_time_++);  // last falling edge
+@@ -251,7 +254,8 @@ struct Sysc_tb : public sc_module {
+   const int loops_;
+   int loop_;
+   bool error_;
+-  bool started_;
++  bool started_ = false;
++  bool cycle_limit_reached_ = false;
+ 
+   sc_in<bool> clock_;
+ 
+@@ -286,6 +290,7 @@ struct Sysc_tb : public sc_module {
+       loop_++;
+     } else {
+       printf("\nInfo: loop limit \"%d\" reached\n", loops_);
++      cycle_limit_reached_ = true;
+       sc_stop();
+     }
+   }
