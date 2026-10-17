@@ -1,0 +1,13 @@
+diff --git a/hdl/chisel/src/coralnpu/scalar/Lsu.scala b/hdl/chisel/src/coralnpu/scalar/Lsu.scala
+index 87515cc6..57ffc84e 100644
+--- a/hdl/chisel/src/coralnpu/scalar/Lsu.scala
++++ b/hdl/chisel/src/coralnpu/scalar/Lsu.scala
+@@ -2032,7 +2032,7 @@ class LsuV3(p: Parameters) extends Lsu(p) {
+     Valid(new FaultInfo(p)),
+     _.valid      -> (slot.io.busReq.valid && slot.io.busReq.bits.write && itcm),
+     _.bits.write -> true.B,
+-    _.bits.addr  -> slot.io.busReq.bits.rowAddr,
++    _.bits.addr  -> Cat(slot.io.busReq.bits.rowAddr, slot.io.busReq.bits.offset),
+     _.bits.epc   -> slot.io.pc
+   )
+ 
