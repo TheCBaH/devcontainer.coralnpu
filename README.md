@@ -137,6 +137,7 @@ Devcontainer CLI configuration is for building containers.
 
 ```sh
 make fixtures       # x86_64: build the reusable guest ELFs and linker layouts
+make dma-tests      # x86_64: Verilator DMA, TileLink and DDR-path tests
 make package        # build native simulators and create all dist/ archives
 make package ARCHIVES=emulators   # or libraries, subsystem
 make python-bindings
@@ -148,6 +149,13 @@ only. The ARM64 image builds pinned firtool 1.114.0 from source because
 upstream publishes no Linux ARM64 firtool executable; the first build is slow.
 Both architectures compile the host emulators natively. Cocotb at the upstream
 pin has no Linux ARM64 wheel; its Python targets remain x86_64-only.
+
+The [DMA and TileLink test guide](doc/dma-tilelink-tests.md) inventories both
+DMA engines, their Verilator targets and the memory models they exercise.
+`make dma-tests DMA_TEST_GROUPS=core` runs the 18 DMA/transpose unit cases;
+omit the group to include TileLink and subsystem coverage. These cocotb
+models are built from source and are separate from the downloadable emulator
+executables. CI publishes their logs and JUnit results.
 
 Use `make test` on a host with Docker to verify archives in fresh Ubuntu
 24.04 and Debian 13 runtime containers (the subsystem archive in
