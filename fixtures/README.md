@@ -31,6 +31,7 @@ timeouts and printed diagnostic output.
 | `external_payload.elf` | 1 MiB initialized external payload processed through a 256-byte tile with 8 KiB ITCM / 32 KiB DTCM; checksum and corruption checks | `CORAL_EXTERNAL_PAYLOAD_PASS` | Scalar base RTL and MPACT V2 |
 | `host_ram.elf`, `host_ram_tcm512k.elf` | Initialized external PT_LOAD, external HTIF packet/buffers, stdin round trip and the last RAM word | `CORAL_HOST_RAM_PASS` | All standalone simulators; RTL frontdoor and backdoor loading |
 | `exit_status.elf`, `exit_status_tcm512k.elf` | Guest status 0/5/77, raw syscall 93, ebreak, mpause, cycle limit | `CORAL_EXIT_STATUS_PASS` | All standalone simulators |
+| `x0_load.elf`, `x0_load_tcm512k.elf` | Discarded scalar loads from ITCM, DTCM and external RAM, successful unaligned reads, and aligned access-fault recovery | `CORAL_X0_LOAD_PASS` | All applicable standalone RTL and MPACT |
 | `trap_address.elf`, `trap_address_tcm512k.elf` | ITCM store-fault byte addresses at three offsets, plus an unmapped-load control | `CORAL_TRAP_ADDRESS_PASS` | All applicable standalone RTL and MPACT |
 | `memory.elf` | Copies a 16 KiB DTCM buffer to testbench RAM at `0x20000000` and back | `CORAL_MEMORY_PASS` | V2, M3, M4, default-TCM RTL |
 | `memory_tcm512k.elf` | Fetches code at 448 KiB in ITCM; copies a 448 KiB DTCM buffer through testbench RAM | `CORAL_MEMORY_PASS` | 512 KiB and 1 MiB TCM RTL |

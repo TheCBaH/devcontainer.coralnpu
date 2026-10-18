@@ -51,6 +51,8 @@ jobs:
           restore-keys: fixture-x86_64-
       - name: Build guest fixtures
         run: $EXEC make fixtures
+      - name: Test RTL retirement
+        run: $EXEC make rtl-tests
       - name: Upload guest fixtures
         uses: actions/upload-artifact@v7
         with:

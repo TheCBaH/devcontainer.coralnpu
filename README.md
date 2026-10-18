@@ -70,9 +70,10 @@ alongside the base ID. Each CI run also publishes
 
 All standalone RTL simulators share the 4 MiB SystemC testbench RAM at
 `0x20000000`; larger TCMs do not enlarge it and there is no DMA. RVV variants
-use VLEN=128. The larger-TCM targets keep upstream settings, including the
-mini retirement buffer and no exposed debug ports, so `--instr_trace` is not
-available on them. `linker/` holds the generated linker layouts for 8/32 KiB,
+use VLEN=128. The larger-TCM targets use the mini retirement buffer;
+wrapper patch 0011 exposes their debug ports, so `--instr_trace` is available.
+Mini-buffer traces report zero instruction and result fields. `linker/` holds
+the generated linker layouts for 8/32 KiB,
 512/512 KiB and 1/1 MiB, matching the examples; upstream's template is
 `provenance/coralnpu_tcm.ld.tpl`.
 
@@ -94,6 +95,11 @@ point and BF16 conversion; M4 adds experimental Zvt matrix instructions.
 Choose the MPACT generation by executable name. Verilator provides CoreMini
 scalar, RvvCoreMini vector and VmeCoreMini matrix RTL simulation. Python
 wheels, macOS and older Linux baselines are outside the archive scope.
+
+The bundle also includes `examples/x0_load.elf` (and its larger-TCM variant)
+to check discarded scalar loads, access-fault reporting and trap recovery.
+Run `bin/core_mini_axi_sim --binary=examples/x0_load.elf --cycles=1000000`;
+success prints `CORAL_X0_LOAD_PASS`.
 
 For MPACT batch jobs, pass `--max_instructions=N` to bound simulator
 instruction steps. The default, 0, is unlimited. Exhaustion returns 124;

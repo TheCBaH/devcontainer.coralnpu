@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / ".cache/source"
-FIXTURES = ("batch_limits", "scalar", "rvv", "rvv_fp", "matrix", "memory", "memory_tcm512k", "memory_tcm1m",
+FIXTURES = ("batch_limits", "x0_load", "x0_load_tcm512k", "scalar", "rvv", "rvv_fp", "matrix", "memory", "memory_tcm512k", "memory_tcm1m",
             "scalar_tcm512k", "rvv_tcm512k", "rvv_fp_tcm512k", "library", "subsystem_dma",
             "subsystem_dma_tcm1m", "trap_address", "trap_address_tcm512k", "exit_status", "exit_status_tcm512k", "host_ram", "host_ram_tcm512k", "host_io", "host_io_tcm512k", "external_payload")
 # Linker layouts shipped with the archives, taken from these fixtures.
@@ -183,7 +183,7 @@ def main():
         output_base = Path(run("bazel", "--output_user_root=" + str(ROOT / ".cache/bazel"),
                                "info", "output_base"))
         objdump, = (output_base / "external").glob("*toolchain_coralnpu_v2/bin/riscv64-unknown-elf-objdump")
-        for name in ("scalar", "scalar_tcm512k", "memory", "memory_tcm512k", "memory_tcm1m", "library", "external_payload"):
+        for name in ("x0_load", "x0_load_tcm512k", "scalar", "scalar_tcm512k", "memory", "memory_tcm512k", "memory_tcm1m", "library", "external_payload"):
             disassembly = run(str(objdump), "-d", str(ROOT / "fixtures" / (name + ".elf")))
             vector = re.search(r"^\s*[0-9a-f]+:\s+[0-9a-f]+\s+(v\S+)", disassembly, re.MULTILINE)
             if vector:
@@ -200,6 +200,9 @@ def main():
             else:
                 raise SystemExit("Unknown archive kind: " + kind)
             (ROOT / ".cache" / ("outputs-" + kind + ".json")).write_text(json.dumps(outputs, indent=2))
+    elif command == "rtl-tests":
+        bazel("test", "-c", "opt", "--test_output=errors",
+              CORE + "coralnpu_retirement_buffer_tests")
     elif command == "python-bindings":
         bazel("build", "-c", "opt", "//sw/coralnpu_sim:coralnpu_v2_sim")
     else:
