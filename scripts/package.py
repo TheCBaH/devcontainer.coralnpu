@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tarfile
 
-from build import ROOT, SOURCE, run
+from build import ROOT, SOURCE, VME_TESTS, RVV_MATMUL_TESTS, run
 import manifest
 import validate_manifest
 import zvt_export
@@ -34,7 +34,13 @@ EXAMPLES = {
                        "itcm8k_dtcm32k.ld"),
         "external_payload.elf": ("CORAL_EXTERNAL_PAYLOAD_PASS", ["core-mini-axi", "mpact-v2"],
                                  "itcm8k_dtcm32k.ld"),
+        **{name + ".elf": ("CORAL_RVV_MATMUL_" + name.rsplit("_", 1)[1].upper() + "_PASS",
+                           ["rvv-core-mini-highmem-axi"], "itcm1m_dtcm1m.ld") for name in RVV_MATMUL_TESTS},
+        "vme_external_matmul.elf": ("CORAL_VME_EXTERNAL_MATMUL_PASS", ["vme-core-mini-axi", "mpact-m4"],
+                                    "itcm8k_dtcm32k.ld"),
         "matrix.elf": ("CORAL_MATRIX_PASS", ["vme-core-mini-axi", "mpact-m4"], "itcm8k_dtcm32k.ld"),
+        **{name + ".elf": ("CORAL_VME_TEST_PASS", ["vme-core-mini-axi", "mpact-m4"], "itcm8k_dtcm32k.ld")
+           for name in VME_TESTS},
         "host_io.elf": ("CORAL_HOST_IO_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
                                                "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
         "host_io_tcm512k.elf": ("CORAL_HOST_IO_PASS", ["core-mini-itcm512kb-dtcm512kb-axi",
@@ -150,6 +156,11 @@ def copy_provenance(bundle):
     shutil.copytree(ROOT / "fixtures", bundle / "provenance/fixtures",
                     ignore=shutil.ignore_patterns("*.elf", "*.ld"))
     shutil.copytree(ROOT / "mpact-patches", bundle / "provenance/mpact-patches")
+    shutil.copytree(SOURCE / "tests/cocotb/vme_test", bundle / "provenance/fixtures/vme_test")
+    for kernel in ("rvv_matmul.cc", "rvv_int8_matmul.cc", "rvv_bf16_matmul.cc"):
+        destination = bundle / "provenance/fixtures/gemma_kernels" / kernel
+        destination.parent.mkdir(exist_ok=True)
+        shutil.copy2(SOURCE / "tests/cocotb/rvv/ml_ops/gemma_kernels" / kernel, destination)
     shutil.copytree(ROOT / "manifest", bundle / "provenance/manifest")
     for script in ("manifest.py", "validate_manifest.py", "zvt_export.py"):
         shutil.copy2(ROOT / "scripts" / script, bundle / "provenance" / script)
@@ -254,6 +265,7 @@ def package(kind):
         isa.append("isa/zvt.jsonl")
         shutil.copy2(ROOT / "scripts/smoke.sh", bundle / "smoke.sh")
         shutil.copy2(ROOT / "scripts/host-contract.sh", bundle / "host-contract.sh")
+        shutil.copy2(ROOT / "scripts/matrix-memory.sh", bundle / "matrix-memory.sh")
         shutil.copy2(ROOT / "scripts/mpact-limits.sh", bundle / "mpact-limits.sh")
     elif kind == "libraries":
         include = bundle / "include/hw_sim"

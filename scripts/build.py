@@ -11,9 +11,14 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / ".cache/source"
+# Coral's VME cocotb programs, run standalone (fixtures/BUILD.bazel).
+VME_TESTS = ("vme_altfmt_test", "vme_decode_test", "vme_load_store_test", "vme_matmul_test", "vme_mset_test",
+             "vme_mstatus_ms_test", "vme_transpose_test", "vme_vset_mtype_reset_test")
+RVV_MATMUL_TESTS = ("rvv_matmul_fp32", "rvv_matmul_int8", "rvv_matmul_bf16")
 FIXTURES = ("batch_limits", "x0_load", "x0_load_tcm512k", "scalar", "rvv", "rvv_fp", "matrix", "memory", "memory_tcm512k", "memory_tcm1m",
             "scalar_tcm512k", "rvv_tcm512k", "rvv_fp_tcm512k", "library", "subsystem_dma",
-            "subsystem_dma_tcm1m", "trap_address", "trap_address_tcm512k", "exit_status", "exit_status_tcm512k", "host_ram", "host_ram_tcm512k", "host_io", "host_io_tcm512k", "external_payload")
+            "subsystem_dma_tcm1m", "trap_address", "trap_address_tcm512k", "exit_status", "exit_status_tcm512k", "host_ram", "host_ram_tcm512k", "host_io", "host_io_tcm512k", "external_payload",
+            "vme_external_matmul", *VME_TESTS, *RVV_MATMUL_TESTS)
 # Linker layouts shipped with the archives, taken from these fixtures.
 LINKER_LAYOUTS = {
     "itcm8k_dtcm32k.ld": "memory_ITCM8KB_DTCM32KB_STACK2048_HEAPDTCM.ld",
@@ -164,6 +169,27 @@ def validate_external_payload(path):
     print("External payload: 1 MiB PT_LOAD at 0x20000000; ITCM <= 8 KiB, DTCM <= 32 KiB", flush=True)
 
 
+def validate_matrix_fixture(path, payload_bytes, itcm_size=0x100000, dtcm_base=0x100000, dtcm_size=0x100000):
+    elf = path.read_bytes()
+    if elf[:7] != b"\x7fELF\x01\x01\x01":
+        raise RuntimeError("Matrix fixture must be ELF32 little-endian")
+    phoff, = struct.unpack_from("<I", elf, 28)
+    phsize, phnum = struct.unpack_from("<HH", elf, 42)
+    regions = [(0, itcm_size), (dtcm_base, dtcm_base + dtcm_size), (0x20000000, 0x20400000)]
+    initialized = 0
+    for i in range(phnum):
+        kind, _, vaddr, addr, filesz, memsz, _, _ = struct.unpack_from("<8I", elf, phoff + i * phsize)
+        if kind != 1:
+            continue
+        if vaddr != addr or filesz > memsz or not any(lo <= addr and addr + memsz <= hi for lo, hi in regions):
+            raise RuntimeError("Matrix fixture exceeds the selected prebuilt layout: " + str(path))
+        if addr >= 0x20000000:
+            initialized += filesz
+    if initialized != payload_bytes:
+        raise RuntimeError("Unexpected initialized matrix payload: " + str(initialized))
+    print(path.name, "fits prebuilt layout; initialized external bytes=", initialized, flush=True)
+
+
 def main():
     command = sys.argv[1]
     if command == "prepare":
@@ -176,6 +202,9 @@ def main():
             output_file = bazel("cquery", "//portable_fixtures:" + name + ".elf", "-c", "opt", "--output=files")
             copy_output(SOURCE / output_file.splitlines()[-1], ROOT / "fixtures" / (name + ".elf"))
         validate_external_payload(ROOT / "fixtures/external_payload.elf")
+        for name, payload_bytes in zip(RVV_MATMUL_TESTS, (2621440, 327680, 1310720)):
+            validate_matrix_fixture(ROOT / "fixtures" / (name + ".elf"), payload_bytes)
+        validate_matrix_fixture(ROOT / "fixtures/vme_external_matmul.elf", 4464, 8192, 0x10000, 32768)
         for layout, script in LINKER_LAYOUTS.items():
             label = "//portable_fixtures:" + script
             bazel("build", "-c", "opt", label)

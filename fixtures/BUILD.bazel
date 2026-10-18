@@ -165,3 +165,53 @@ coralnpu_v2_binary(
     itcm_size_kbytes = tcm[0],
     dtcm_size_kbytes = tcm[1],
 ) for suffix, tcm in [("", (8, 32)), ("_tcm512k", (512, 512))]]
+
+# Coral's VME cocotb programs, built standalone from the pinned sources: with
+# no harness they run every subtest. vme_test_main.cc wraps main to print the
+# pass marker after a zero exit.
+VME_TESTS = [
+    "vme_altfmt_test",
+    "vme_decode_test",
+    "vme_load_store_test",
+    "vme_matmul_test",
+    "vme_mset_test",
+    "vme_mstatus_ms_test",
+    "vme_transpose_test",
+    "vme_vset_mtype_reset_test",
+]
+
+[coralnpu_v2_binary(
+    name = name,
+    srcs = ["//tests/cocotb/vme_test:" + name + ".cc", "vme_test_main.cc"],
+    hdrs = ["//tests/cocotb/vme_test:vme_test_utils.h"],
+    linkopts = ["-Wl,--wrap=main"],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+) for name in VME_TESTS]
+
+[coralnpu_v2_binary(
+    name = "rvv_matmul_" + kind,
+    srcs = ["rvv_matmul.cc", "//tests/cocotb/rvv/ml_ops/gemma_kernels:" + kernel],
+    copts = ["-fno-tree-vectorize", "-fno-tree-slp-vectorize"] + defines,
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+    itcm_size_kbytes = 1024,
+    dtcm_size_kbytes = 1024,
+) for kind, kernel, defines in [
+    ("fp32", "rvv_matmul.cc", []),
+    ("int8", "rvv_int8_matmul.cc", ["-DCORAL_MATMUL_INT8"]),
+    ("bf16", "rvv_bf16_matmul.cc", ["-DCORAL_MATMUL_BF16"]),
+]]
+
+coralnpu_v2_binary(
+    name = "vme_external_matmul",
+    srcs = ["vme_external_matmul.cc"],
+    hdrs = ["//tests/cocotb/vme_test:vme_test_utils.h"],
+    copts = ["-fno-tree-vectorize", "-fno-tree-slp-vectorize"],
+    linkopts = ["-Wl,--section-start=.extbss=0x203ff800"],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+)

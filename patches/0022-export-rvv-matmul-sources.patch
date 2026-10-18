@@ -1,0 +1,16 @@
+diff --git a/tests/cocotb/rvv/ml_ops/gemma_kernels/BUILD b/tests/cocotb/rvv/ml_ops/gemma_kernels/BUILD
+--- a/tests/cocotb/rvv/ml_ops/gemma_kernels/BUILD
++++ b/tests/cocotb/rvv/ml_ops/gemma_kernels/BUILD
+@@ -27,6 +27,12 @@ load("//third_party/python:requirements.bzl", "requirement")
+ 
+ package(default_visibility = ["//visibility:public"])
+ 
++exports_files([
++    "rvv_matmul.cc",
++    "rvv_int8_matmul.cc",
++    "rvv_bf16_matmul.cc",
++])
++
+ cc_library(
+     name = "rvv_common_vec",
+     hdrs = ["rvv_common_vec.h"],

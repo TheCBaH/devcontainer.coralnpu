@@ -59,8 +59,13 @@ done
 for sim in coralnpu_m3_sim coralnpu_m4_sim; do
   mpact CORAL_RVV_FP_PASS "$sim" rvv_fp.elf
 done
+mpact CORAL_VME_EXTERNAL_MATMUL_PASS coralnpu_m4_sim vme_external_matmul.elf
 mpact CORAL_MATRIX_PASS coralnpu_m4_sim matrix.elf
 rtl CORAL_MATRIX_PASS vme_core_mini_axi_sim matrix.elf
+for example in "$root"/examples/vme_*_test.elf; do
+  mpact CORAL_VME_TEST_PASS coralnpu_m4_sim "${example##*/}"
+  rtl CORAL_VME_TEST_PASS vme_core_mini_axi_sim "${example##*/}" 20000000
+done
 for sim in core_mini_itcm512kb_dtcm512kb_axi_sim core_mini_highmem_axi_sim \
     rvv_core_mini_itcm512kb_dtcm512kb_axi_sim rvv_core_mini_highmem_axi_sim; do
   rtl CORAL_X0_LOAD_PASS "$sim" x0_load_tcm512k.elf
@@ -75,6 +80,7 @@ for sim in rvv_core_mini_itcm512kb_dtcm512kb_axi_sim rvv_core_mini_highmem_axi_s
   rtl CORAL_RVV_PASS "$sim" rvv_tcm512k.elf
   rtl CORAL_RVV_FP_PASS "$sim" rvv_fp_tcm512k.elf
 done
+bash "$root/matrix-memory.sh"
 for sim in "$root"/bin/*; do
   sim=${sim##*/}
   set +e

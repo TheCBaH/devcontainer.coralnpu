@@ -26,7 +26,10 @@ timeouts and printed diagnostic output.
 | `scalar.elf` | Scalar FP32 addition, output and exit | `CORAL_SCALAR_PASS` | V2, M3, M4, scalar/RVV/VME RTL |
 | `rvv.elf` | Sixteen signed int32 vector additions with loads/stores | `CORAL_RVV_PASS` | V2, M3, M4, RVV/VME RTL |
 | `rvv_fp.elf` | Sixteen FP32 vector additions and FP32-to-BF16 conversion | `CORAL_RVV_FP_PASS` | M3, M4, RVV/VME RTL |
+| `rvv_matmul_fp32.elf`, `rvv_matmul_int8.elf`, `rvv_matmul_bf16.elf` | Upstream RVV matrix kernels, external weights/output, scalar numerical checks and output guards | `CORAL_RVV_MATMUL_<format>_PASS` | Highmem RVV RTL |
+| `vme_external_matmul.elf` | FP32 tiled matrix accumulation with external row/column tile loads/stores, partial tiles and output guards | `CORAL_VME_EXTERNAL_MATMUL_PASS` | M4, VME RTL |
 | `matrix.elf` | Zvt configuration, tile zeroing, signed INT8/FP32/BF16 multiplication and integer accumulation | `CORAL_MATRIX_PASS` | M4, VME RTL |
+| `vme_*_test.elf` | Coral's VME cocotb programs run standalone: every Zvt form except the 64-bit tile loads/stores, on several tiles, plus illegal encodings that must trap | `CORAL_VME_TEST_PASS` (exit 0) | M4, VME RTL |
 | `host_io.elf`, `host_io_tcm512k.elf` | File create/append/truncate/exclusive-open/read/close and separated stdout/stderr | `CORAL_HOST_IO_PASS` | All standalone simulators |
 | `external_payload.elf` | 1 MiB initialized external payload processed through a 256-byte tile with 8 KiB ITCM / 32 KiB DTCM; checksum and corruption checks | `CORAL_EXTERNAL_PAYLOAD_PASS` | Scalar base RTL and MPACT V2 |
 | `host_ram.elf`, `host_ram_tcm512k.elf` | Initialized external PT_LOAD, external HTIF packet/buffers, stdin round trip and the last RAM word | `CORAL_HOST_RAM_PASS` | All standalone simulators; RTL frontdoor and backdoor loading |
@@ -70,6 +73,50 @@ simulator runs scalar programs; the RVV RTL simulator adds vector execution.
 The VME RTL simulator adds the experimental matrix engine. M3/M4 are MPACT
 functional models; RVV/VME RTL are separate implementations whose complete
 instruction subsets are not established as equivalent by these smoke tests.
+
+## Matrix kernels with external memory
+
+The matrix memory fixtures run on the packaged simulators without rebuilding
+an emulator. `bash matrix-memory.sh` checks all four fixtures and verifies
+that corrupting an initialized external input makes each one fail.
+
+`rvv_matmul_{fp32,int8,bf16}.elf` calls the pinned upstream Gemma GeMV and
+2D matrix kernels. Its standalone driver supplies deterministic signed inputs,
+checks every output against an integer scalar dot product (including BF16
+round-to-nearest-even), and checks output guards. Cases cover full vectors,
+K/N tails, odd row counts, 640-element reduction depths, up to 1024 output
+columns (512 for INT8), and weights near the end of the large payload.
+The scalar driver disables automatic vectorization; the kernels retain their explicit RVV instructions.
+Patch 0023 expresses the INT8 column tail with RVV intrinsics and active
+lengths; the upstream tail otherwise overwrites the output guard. The
+full-vector fast path is retained.
+
+These ELFs use the prebuilt `rvv_core_mini_highmem_axi_sim`: 1 MiB ITCM,
+1 MiB DTCM at `0x100000`, VLEN=128, and the existing 4 MiB external RAM at
+`0x20000000`. Initialized external weights occupy 2,621,440 bytes for FP32,
+327,680 for INT8, or 1,310,720 for BF16. Output is also external; BF16 keeps
+its LHS external too. The ELF build checks every loadable segment against
+this layout. Upstream's cocotb layout at `0x80000000` is not used.
+
+`vme_external_matmul.elf` uses the default-TCM `vme_core_mini_axi_sim` and
+computes `C += A*B` for M=19, N=23, K=5 across four 16-by-16 tiles. Inputs
+are initialized external ELF data. One pass loads accumulator rows with
+`vtle32`, accumulates five FP32 outer products with `vtfmm`, and writes
+columns with `vtse32`. The other loads columns and writes rows. A/B vector
+loads also come directly from external RAM. Results and guards sit near the
+end of RAM at `0x203ff800`, and every result is checked. This exercises both
+slice orientations, non-square matrix strides, and partial tiles with small
+TCMs. It also runs on MPACT M4.
+
+```sh
+bin/rvv_core_mini_highmem_axi_sim --cycles=100000000 \
+  --binary=examples/rvv_matmul_fp32.elf
+bin/vme_core_mini_axi_sim --cycles=100000000 \
+  --binary=examples/vme_external_matmul.elf
+```
+
+External RAM remains a functional memory model. These tests exercise core
+memory transactions and numerical results, without DRAM timing or DMA.
 
 ## Small TCM with a large external payload
 
@@ -153,6 +200,21 @@ for data.
 `(i - 7) + 3*i == 4*i - 7`, for `i=0..15`. `rvv_fp.elf` checks every element
 of `(0.5*i - 2) + (2*i + 1.25) == 2.5*i - 0.75` and the BF16 encoding
 `0x3fc0` of `1.5`. These FP inputs and expected results are exactly representable.
+
+The `vme_*_test.elf` programs are upstream's `tests/cocotb/vme_test` sources
+at the pinned revision (copied to `provenance/fixtures/vme_test/`), built
+unmodified with the semihosting runtime. Under cocotb the harness picks one
+subtest and checks the result tables it writes; with no harness each program
+runs all of its subtests. `vme_test_main.cc` wraps `main` to print
+`CORAL_VME_TEST_PASS` when it returns 0. The marker therefore shows that
+every subtest ran to completion with the expected traps handled, not that
+the results match: the result checks live in upstream's cocotb bench. They
+cover `msetmtype`, `msettn/m/k` (with clamping), `msetmtypei`, `vtzero`,
+`vtdiscard`, `vtmv.v.t`, `vtmv.t.v`, `vtle8/16/32`, `vtse8/16/32`,
+`vtmmu`/`vtmms`/`vtfmm` on tiles 0, 4 and 8, `mstatus.MS` transitions, and
+encodings the RTL must reject (`vtle64`/`vtse64`, reserved `nf`, `vm=0`,
+non-zero `vd`/`mop`). `vme_mset_vtmmu_sequence_test` is left out: it halts
+with `mpause` instead of returning.
 
 `matrix.elf` uses tile 0 and checks configuration readback, then:
 

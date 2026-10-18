@@ -1,0 +1,84 @@
+--- a/tests/cocotb/rvv/ml_ops/gemma_kernels/rvv_int8_matmul.cc
++++ b/tests/cocotb/rvv/ml_ops/gemma_kernels/rvv_int8_matmul.cc
+@@ -104,74 +104,14 @@
+   }
+   // N tail
+   while (n < N) {
+-    const size_t vl              = __riscv_vsetvl_e8m2(N - n);
+-    const int8_t *lhs_ptr        = A;
+-    const int8_t *rhs_ptr_scatch = B + n;
+-    int32_t *acc_ptr             = C + n;
+-
+-    vint32m8_t acc;
+-    // Compiler wants to spill and store these. This asm block is the
+-    // workaround.
+-    asm("vsetvli zero, zero, e32, m8, ta, ma;"
+-        "vmv.v.x %[acc], zero;"
+-        : [acc] "=vr"(acc)::"vl", "vtype");
+-
+-    size_t k = 0;
+-    // K main
+-    for (; k + 4 <= K; k += 4) {
+-      uint32_t lhs_bundle = *(const uint32_t *)(lhs_ptr + k);
+-
+-      // TODO(davidgao): This block can potentially be faster, but this is tail and is
+-      // not our current focus.
+-      asm("vsetvli zero, %[vl], e8, m2, ta, ma;"
+-          "vle8.v v4, (%[rhs_ptr]);"
+-          "add %[rhs_ptr], %[rhs_ptr], %[n];"
+-          "vwmul.vx v8, v4, %[lhs];"
+-          "srli %[lhs], %[lhs], 8;"
+-
+-          "vle8.v v4, (%[rhs_ptr]);"
+-          "add %[rhs_ptr], %[rhs_ptr], %[n];"
+-          "vwmacc.vx v8, %[lhs], v4;"
+-          "vsetvli zero, %[vl_f2], e16, m4, ta, ma;"
+-          "vwadd.wv %[acc], %[acc], v8;"
+-          "srli %[lhs], %[lhs], 8;"
+-
+-          "vsetvli zero, %[vl], e8, m2, ta, ma;"
+-          "vle8.v v4, (%[rhs_ptr]);"
+-          "add %[rhs_ptr], %[rhs_ptr], %[n];"
+-          "vwmul.vx v8, v4, %[lhs];"
+-          "srli %[lhs], %[lhs], 8;"
+-
+-          "vle8.v v4, (%[rhs_ptr]);"
+-          "add %[rhs_ptr], %[rhs_ptr], %[n];"
+-          "vwmacc.vx v8, %[lhs], v4;"
+-          "vsetvli zero, %[vl_f2], e16, m4, ta, ma;"
+-          "vwadd.wv %[acc], %[acc], v8;"
+-
+-          : [acc] "+vr"(acc), [lhs] "+r"(lhs_bundle), [rhs_ptr] "+r"(rhs_ptr_scatch)
+-          : [n] "r"(N), [vl] "r"(vlmax_e8m4), [vl_f2] "r"(vlmax_e32m8),
+-            // We're reading 4 rows, marking the entire operand is easier than
+-            // marking precisely.
+-            "m"(*(const int8_t(*)[K * N]) B)
+-          : "v4", "v5", "v8", "v9", "v10", "v11", "vl", "vtype");
++    const size_t vl = __riscv_vsetvl_e8m2(N - n);
++    vint32m8_t acc = __riscv_vmv_v_x_i32m8(0, vl);
++    for (size_t k = 0; k < K; ++k) {
++      vint8m2_t rhs = __riscv_vle8_v_i8m2(B + k * N + n, vl);
++      vint16m4_t product = __riscv_vwmul_vx_i16m4(rhs, A[k], vl);
++      acc = __riscv_vwadd_wv_i32m8(acc, product, vl);
+     }
+-    for (; k < K; k += 1) {
+-      int8_t lhs = lhs_ptr[k];
+-
+-      asm("vsetvli zero, %[vl], e8, m2, ta, ma;"
+-          "vle8.v v4, (%[rhs_ptr]);"
+-          "add %[rhs_ptr], %[rhs_ptr], %[n];"
+-          "vwmul.vx v8, v4, %[lhs];"
+-          "vsetvli zero, %[vl_f2], e16, m4, ta, ma;"
+-          "vwadd.wv %[acc], %[acc], v8;"
+-
+-          : [acc] "+vr"(acc), [lhs] "+r"(lhs), [rhs_ptr] "+r"(rhs_ptr_scatch)
+-          : [n] "r"(N), [vl] "r"(vlmax_e8m4), [vl_f2] "r"(vlmax_e32m8),
+-            "m"(*(const int8_t(*)[vlmax_e8m4])rhs_ptr_scatch)
+-          : "v4", "v5", "v8", "v9", "v10", "v11", "vl", "vtype");
+-    }
+-    __riscv_vse32_v_i32m8(acc_ptr, acc, vlmax_e32m8);
+-
++    __riscv_vse32_v_i32m8(C + n, acc, vl);
+     n += vl;
+   }
+ }

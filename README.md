@@ -68,6 +68,12 @@ alongside the base ID. Each CI run also publishes
 | `core_mini_itcm512kb_dtcm512kb_axi_sim`, `rvv_core_mini_itcm512kb_dtcm512kb_axi_sim` | 512 KiB / 512 KiB at `0x100000` | Core CSR `0x200000` |
 | `core_mini_highmem_axi_sim`, `rvv_core_mini_highmem_axi_sim` | 1 MiB / 1 MiB at `0x100000` | Core CSR `0x200000` |
 
+The self-checking `rvv_matmul_{fp32,int8,bf16}.elf` examples use the highmem
+RVV binary and external weights/output at `0x20000000`.
+`vme_external_matmul.elf` uses the default-TCM VME binary for external row/column
+tile transfers and FP32 accumulation. See `examples/README.md` in the archive
+(or [fixtures/README.md](fixtures/README.md)) for layouts and launch commands.
+
 All standalone RTL simulators share the 4 MiB SystemC testbench RAM at
 `0x20000000`; larger TCMs do not enlarge it and there is no DMA. RVV variants
 use VLEN=128. The larger-TCM targets use the mini retirement buffer;
@@ -114,7 +120,8 @@ The flag is incompatible with interactive mode. Retain an external `timeout`
 for wall-clock deadlines and blocked host I/O; the budget does not bound those.
 
 The emulator archive includes scalar, integer-vector, vector-FP/BF16, matrix
-and memory guest ELFs, larger-TCM builds of them, their sources under
+and memory guest ELFs, Coral's VME (Zvt) cocotb programs as standalone
+`vme_*_test.elf`, larger-TCM builds of them, their sources under
 `provenance/fixtures/`, and `smoke.sh`. See `examples/README.md` in the
 archive, or the [example guide](https://github.com/TheCBaH/devcontainer.coralnpu/blob/main/fixtures/README.md),
 for expected calculations, model compatibility, commands and test coverage.
