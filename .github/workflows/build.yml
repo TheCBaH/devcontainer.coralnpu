@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       x86_only:
-        description: 'Validate x86_64 changes without rebuilding the ARM64 tool image'
+        description: 'Skip the ARM64 builds'
         type: boolean
         default: false
   workflow_call:
@@ -71,10 +71,6 @@ jobs:
     needs: fixtures
     runs-on: ubuntu-24.04
     timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      matrix:
-        archive: [emulators, libraries, subsystem]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -99,6 +95,11 @@ jobs:
         with:
           name: guest-fixtures
           path: fixtures
+      - name: Cache ID
+        id: cache-id
+        run: |
+          echo "prefix=bazel-${{ runner.arch }}" >> "$GITHUB_OUTPUT"
+          echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
       - name: Cache Bazel inputs and actions
         id: bazel-cache
         uses: actions/cache/restore@v6
@@ -106,25 +107,25 @@ jobs:
           path: |
             .cache/repos
             .cache/actions
-          key: bazel-x86_64-${{ matrix.archive }}-${{ hashFiles('.gitmodules', 'patches/**', '.devcontainer/**', 'scripts/**', 'fixtures/**') }}-${{ github.sha }}
+          key: ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-${{ hashFiles('patches/**', 'mpact-patches/**', '.devcontainer/**', 'scripts/build.py') }}
           restore-keys: |
-            bazel-x86_64-${{ matrix.archive }}-
-            bazel-x86_64-
+            ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-
+            ${{ steps.cache-id.outputs.prefix }}-
       - name: Build and package
-        run: $EXEC make package ARCHIVES=${{ matrix.archive }}
+        run: $EXEC make package
       - name: Test external archives
         run: make test
       - name: Upload verified archives
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.archive }}-x86_64
+          name: archives-x86_64
           path: dist/*
           if-no-files-found: error
       - name: Preserve failed archives
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: diagnostics-${{ matrix.archive }}-x86_64
+          name: diagnostics-x86_64
           path: dist/*
           if-no-files-found: ignore
       - name: Save Bazel cache
@@ -134,44 +135,18 @@ jobs:
           path: |
             .cache/repos
             .cache/actions
-          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}
+          # A failed build must not claim the stable key.
+          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}${{ job.status != 'success' && format('-partial-{0}', github.run_id) || '' }}
       - name: Disk usage
         if: always()
-        run: df -h
-  arm-image:
-    if: ${{ !inputs.x86_only }}
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 360
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          submodules: false
-          persist-credentials: false
-      - name: Initialize source
-        run: make submodule
-      - name: Free runner disk
         run: |
-          sudo find /usr/local/lib/android /usr/share/dotnet /opt/ghc -depth -delete 2>/dev/null || true
           df -h
-      - name: Development container
-        id: container
-        uses: TheCBaH/devcontainer-action/devcontainer@v1
-        with:
-          cli-version: '0.88.0'
-          username: ${{ github.event_name != 'pull_request' && github.actor || '' }}
-          password: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
-      - name: Set command prefix
-        run: echo 'EXEC=${{ steps.container.outputs.exec }}' >> "$GITHUB_ENV"
-      - name: Check native tools
-        run: $EXEC bash -c 'test "$(uname -m)" = aarch64; firtool --version; clang --version'
+          du -sh .cache/repos .cache/actions || true
   aarch64:
-    needs: [arm-image, fixtures]
+    if: ${{ !inputs.x86_only }}
+    needs: fixtures
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
-    strategy:
-      fail-fast: false
-      matrix:
-        archive: [emulators, libraries, subsystem]
     steps:
       - uses: actions/checkout@v5
         with:
@@ -196,6 +171,11 @@ jobs:
         with:
           name: guest-fixtures
           path: fixtures
+      - name: Cache ID
+        id: cache-id
+        run: |
+          echo "prefix=bazel-${{ runner.arch }}" >> "$GITHUB_OUTPUT"
+          echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
       - name: Cache Bazel inputs and actions
         id: bazel-cache
         uses: actions/cache/restore@v6
@@ -203,25 +183,25 @@ jobs:
           path: |
             .cache/repos
             .cache/actions
-          key: bazel-aarch64-${{ matrix.archive }}-${{ hashFiles('.gitmodules', 'patches/**', '.devcontainer/**', 'scripts/**', 'fixtures/**') }}-${{ github.sha }}
+          key: ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-${{ hashFiles('patches/**', 'mpact-patches/**', '.devcontainer/**', 'scripts/build.py') }}
           restore-keys: |
-            bazel-aarch64-${{ matrix.archive }}-
-            bazel-aarch64-
+            ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-
+            ${{ steps.cache-id.outputs.prefix }}-
       - name: Build and package
-        run: $EXEC make package ARCHIVES=${{ matrix.archive }}
+        run: $EXEC make package
       - name: Test external archives
         run: make test
       - name: Upload verified archives
         uses: actions/upload-artifact@v7
         with:
-          name: ${{ matrix.archive }}-aarch64
+          name: archives-aarch64
           path: dist/*
           if-no-files-found: error
       - name: Preserve failed archives
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: diagnostics-${{ matrix.archive }}-aarch64
+          name: diagnostics-aarch64
           path: dist/*
           if-no-files-found: ignore
       - name: Save Bazel cache
@@ -231,10 +211,13 @@ jobs:
           path: |
             .cache/repos
             .cache/actions
-          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}
+          # A failed build must not claim the stable key.
+          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}${{ job.status != 'success' && format('-partial-{0}', github.run_id) || '' }}
       - name: Disk usage
         if: always()
-        run: df -h
+        run: |
+          df -h
+          du -sh .cache/repos .cache/actions || true
   manifests:
     needs: [x86_64, aarch64]
     runs-on: ubuntu-24.04
