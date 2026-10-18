@@ -12,6 +12,7 @@ import tarfile
 from build import ROOT, SOURCE, run
 import manifest
 import validate_manifest
+import zvt_export
 
 SYSTEM = re.compile(r"^(lib(c|m|pthread|dl|rt|resolv|util)\.so\.|ld-linux)")
 ARCH = {"x86_64": "x86_64", "aarch64": "aarch64"}[platform.machine()]
@@ -150,7 +151,7 @@ def copy_provenance(bundle):
                     ignore=shutil.ignore_patterns("*.elf", "*.ld"))
     shutil.copytree(ROOT / "mpact-patches", bundle / "provenance/mpact-patches")
     shutil.copytree(ROOT / "manifest", bundle / "provenance/manifest")
-    for script in ("manifest.py", "validate_manifest.py"):
+    for script in ("manifest.py", "validate_manifest.py", "zvt_export.py"):
         shutil.copy2(ROOT / "scripts" / script, bundle / "provenance" / script)
 
 
@@ -245,7 +246,12 @@ def package(kind):
     shutil.copy2(ROOT / "README.md", bundle / "README.md")
     shutil.copy2(ROOT / "fixtures/README.md", bundle / "examples/README.md")
     runtime = []
+    isa = []
     if kind == "emulators":
+        mpact_riscv, = output_root.glob("*com_google_mpact-riscv")
+        (bundle / "isa").mkdir()
+        zvt_export.export(mpact_riscv, SOURCE, bundle / "isa/zvt.jsonl", revision)
+        isa.append("isa/zvt.jsonl")
         shutil.copy2(ROOT / "scripts/smoke.sh", bundle / "smoke.sh")
         shutil.copy2(ROOT / "scripts/host-contract.sh", bundle / "host-contract.sh")
         shutil.copy2(ROOT / "scripts/mpact-limits.sh", bundle / "mpact-limits.sh")
@@ -314,6 +320,7 @@ def package(kind):
         "configuration_manifest": "hardware-configurations.json",
         "files": sorted(relative for _, _, _, relative in placed),
         "examples": sorted(EXAMPLES[kind]),
+        "isa": isa,
         "runtime_libraries": sorted(libraries),
         "runtime_packages": run("dpkg-query", "-W", "-f=${Package} ${Version}\n",
                                 "libstdc++6", "libgcc-s1", cwd=ROOT).splitlines(),

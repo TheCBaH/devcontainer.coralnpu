@@ -92,7 +92,12 @@ DPI port; guest output is in the UART log files of the working directory.
 
 MPACT provides functional V2, M3 and M4 emulation. M3 adds vector floating
 point and BF16 conversion; M4 adds experimental Zvt matrix instructions.
-Choose the MPACT generation by executable name. Verilator provides CoreMini
+Choose the MPACT generation by executable name. The emulator archive
+describes the M4 Zvt encodings in `isa/zvt.jsonl`, exported by
+`provenance/zvt_export.py` from the patched MPACT decoder: a provenance
+line (MPACT commit, patch and input hashes), then one line per instruction
+with mask/match, constrained fields, format field layout and disassembly
+template. Verilator provides CoreMini
 scalar, RvvCoreMini vector and VmeCoreMini matrix RTL simulation. Python
 wheels, macOS and older Linux baselines are outside the archive scope.
 
