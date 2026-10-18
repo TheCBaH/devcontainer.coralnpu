@@ -23,6 +23,8 @@ ARCHIVES = {
 # Example ELF: (success marker, configurations it runs on, linker layout).
 EXAMPLES = {
     "emulators": {
+        "batch_limits.elf": ("CORAL_MPACT_LIMITS_PASS", ["mpact-v2", "mpact-m3", "mpact-m4"],
+                             "itcm8k_dtcm32k.ld"),
         "scalar.elf": ("CORAL_SCALAR_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
                                              "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
         "rvv.elf": ("CORAL_RVV_PASS", ["rvv-core-mini-axi", "vme-core-mini-axi", "mpact-v2", "mpact-m3",
@@ -190,7 +192,7 @@ def artifact(bundle, relative, record, kind, runtime_files):
         "host": host(),
         "abi": None,
         "launch": {"method": "command-line", "command": [relative] + (
-            ["--semihost_htif", "--exit_on_ebreak", "<elf>"] if record["simulation"]["backend"] == "mpact" else
+            ["--semihost_htif", "--exit_on_ebreak", "--max_instructions=100000000", "<elf>"] if record["simulation"]["backend"] == "mpact" else
             ["--load_elf=<elf>"] if kind == "subsystem" else ["--binary=<elf>"])},
         "runtime_files": runtime_files,
     }
@@ -241,6 +243,7 @@ def package(kind):
     if kind == "emulators":
         shutil.copy2(ROOT / "scripts/smoke.sh", bundle / "smoke.sh")
         shutil.copy2(ROOT / "scripts/host-contract.sh", bundle / "host-contract.sh")
+        shutil.copy2(ROOT / "scripts/mpact-limits.sh", bundle / "mpact-limits.sh")
     elif kind == "libraries":
         include = bundle / "include/hw_sim"
         include.mkdir(parents=True)

@@ -11,7 +11,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / ".cache/source"
-FIXTURES = ("scalar", "rvv", "rvv_fp", "matrix", "memory", "memory_tcm512k", "memory_tcm1m",
+FIXTURES = ("batch_limits", "scalar", "rvv", "rvv_fp", "matrix", "memory", "memory_tcm512k", "memory_tcm1m",
             "scalar_tcm512k", "rvv_tcm512k", "rvv_fp_tcm512k", "library", "subsystem_dma",
             "subsystem_dma_tcm1m", "trap_address", "trap_address_tcm512k", "exit_status", "exit_status_tcm512k", "host_ram", "host_ram_tcm512k", "host_io", "host_io_tcm512k", "external_payload")
 # Linker layouts shipped with the archives, taken from these fixtures.

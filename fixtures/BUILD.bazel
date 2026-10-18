@@ -1,5 +1,15 @@
 load("//rules:coralnpu_v2.bzl", "coralnpu_v2_binary")
 coralnpu_v2_binary(
+    name = "batch_limits",
+    srcs = ["batch_limits.cc"],
+    copts = ["-march=rv32imf_zicsr_zifencei_zbb"],
+    linkopts = ["-Wl,--section-start=.batch_limits=0x1000", "-Wl,--undefined=batch_loop"],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+)
+
+coralnpu_v2_binary(
     name = "scalar",
     srcs = ["scalar.cc"],
     copts = ["-march=rv32imf_zicsr_zifencei_zbb"],

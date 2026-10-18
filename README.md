@@ -95,6 +95,13 @@ Choose the MPACT generation by executable name. Verilator provides CoreMini
 scalar, RvvCoreMini vector and VmeCoreMini matrix RTL simulation. Python
 wheels, macOS and older Linux baselines are outside the archive scope.
 
+For MPACT batch jobs, pass `--max_instructions=N` to bound simulator
+instruction steps. The default, 0, is unlimited. Exhaustion returns 124;
+batch Ctrl-C returns 130. A guest halt on the last allowed instruction keeps
+its guest status. Stderr reports the stop reason, count, budget and final PC.
+The flag is incompatible with interactive mode. Retain an external `timeout`
+for wall-clock deadlines and blocked host I/O; the budget does not bound those.
+
 The emulator archive includes scalar, integer-vector, vector-FP/BF16, matrix
 and memory guest ELFs, larger-TCM builds of them, their sources under
 `provenance/fixtures/`, and `smoke.sh`. See `examples/README.md` in the

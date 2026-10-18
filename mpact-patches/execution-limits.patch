@@ -1,0 +1,338 @@
+diff --git a/sim/coralnpu_m3_sim.cc b/sim/coralnpu_m3_sim.cc
+index 60c7af5..418d767 100644
+--- a/sim/coralnpu_m3_sim.cc
++++ b/sim/coralnpu_m3_sim.cc
+@@ -60,6 +60,13 @@ ABSL_FLAG(std::vector<std::string>, allow_memory_region,
+           "Repeat this option to specify multiple regions.");
+ 
+ ABSL_FLAG(bool, semihost_htif, false, "HTIF semihosting");
++ABSL_FLAG(uint64_t, max_instructions, 0,
++          "Maximum batch instruction steps; 0 means unlimited. "
++          "Does not bound blocking host I/O or wall-clock time.");
++
++static volatile sig_atomic_t g_interrupted = 0;
++
++static void batch_sigint_handler(int) { g_interrupted = 1; }
+ 
+ // Static pointer to the simulator instance. Used by the control-C handler.
+ static CoralNPUSimulator* g_simulator = nullptr;
+@@ -135,6 +142,13 @@ int main(int argc, char** argv) {
+         {.start_address = start, .length = length, .permissions = permissions});
+   }
+ 
++  bool interactive = absl::GetFlag(FLAGS_i) || absl::GetFlag(FLAGS_interactive);
++  uint64_t max_instructions = absl::GetFlag(FLAGS_max_instructions);
++  if (interactive && max_instructions != 0) {
++    std::cerr << "--max_instructions requires batch mode\n";
++    return 126;
++  }
++
+   CoralNPUSimulator simulator(options);
+ 
+   // Set up control-c handling.
+@@ -143,10 +157,9 @@ int main(int argc, char** argv) {
+   sa.sa_flags = 0;
+   sigemptyset(&sa.sa_mask);
+   sigaddset(&sa.sa_mask, SIGINT);
+-  sa.sa_handler = &sim_sigint_handler;
++  sa.sa_handler = interactive ? &sim_sigint_handler : &batch_sigint_handler;
+   sigaction(SIGINT, &sa, nullptr);
+ 
+-  bool interactive = absl::GetFlag(FLAGS_i) || absl::GetFlag(FLAGS_interactive);
+   std::optional<uint32_t> entry_point = absl::GetFlag(FLAGS_entry_point);
+ 
+   absl::Status load_status = simulator.LoadProgram(file_name, entry_point);
+@@ -161,20 +174,20 @@ int main(int argc, char** argv) {
+   } else {
+     std::cerr << "Starting simulation\n";
+     auto t0 = absl::Now();
+-    absl::Status run_status = simulator.Run();
+-    if (!run_status.ok()) {
+-      LOG(ERROR) << "Error during simulation run: " << run_status.message();
+-      return 126;
+-    }
+-    absl::Status wait_status = simulator.Wait();
+-    if (!wait_status.ok()) {
+-      LOG(ERROR) << "Error while waiting for simulation: "
+-                 << wait_status.message();
++    auto result = simulator.RunBatch(max_instructions, &g_interrupted);
++    if (!result.ok()) {
++      LOG(ERROR) << result.status().message();
+       return 126;
+     }
++    std::cerr << "Stop reason: " << result->stop_reason
++              << "; instructions=" << result->instructions
++              << "; max_instructions=" << max_instructions
++              << absl::StrFormat("; pc=0x%08x\n", result->pc);
+     auto sec = absl::ToDoubleSeconds(absl::Now() - t0);
+     std::cerr << "Total cycles: " << simulator.GetCycleCount() << '\n';
+     std::cerr << absl::StrFormat("Simulation done: %0.3f sec\n", sec);
++    g_simulator = nullptr;
++    return result->exit_status;
+   }
+ 
+   g_simulator = nullptr;
+diff --git a/sim/coralnpu_m4_sim.cc b/sim/coralnpu_m4_sim.cc
+index 8d40783..55f1d21 100644
+--- a/sim/coralnpu_m4_sim.cc
++++ b/sim/coralnpu_m4_sim.cc
+@@ -66,6 +66,13 @@ ABSL_FLAG(std::vector<std::string>, allow_memory_region,
+           "Repeat this option to specify multiple regions.");
+ 
+ ABSL_FLAG(bool, semihost_htif, false, "HTIF semihosting");
++ABSL_FLAG(uint64_t, max_instructions, 0,
++          "Maximum batch instruction steps; 0 means unlimited. "
++          "Does not bound blocking host I/O or wall-clock time.");
++
++static volatile sig_atomic_t g_interrupted = 0;
++
++static void batch_sigint_handler(int) { g_interrupted = 1; }
+ 
+ // Static pointer to the simulator instance. Used by the control-C handler.
+ static std::atomic<CoralNPUSimulator*> g_simulator = nullptr;
+@@ -142,6 +149,13 @@ int main(int argc, char** argv) {
+         {.start_address = start, .length = length, .permissions = permissions});
+   }
+ 
++  bool interactive = absl::GetFlag(FLAGS_i) || absl::GetFlag(FLAGS_interactive);
++  uint64_t max_instructions = absl::GetFlag(FLAGS_max_instructions);
++  if (interactive && max_instructions != 0) {
++    std::cerr << "--max_instructions requires batch mode\n";
++    return 126;
++  }
++
+   CoralNPUSimulator simulator(options);
+ 
+   // Set up control-c handling.
+@@ -150,10 +164,9 @@ int main(int argc, char** argv) {
+   sa.sa_flags = 0;
+   sigemptyset(&sa.sa_mask);
+   sigaddset(&sa.sa_mask, SIGINT);
+-  sa.sa_handler = &sim_sigint_handler;
++  sa.sa_handler = interactive ? &sim_sigint_handler : &batch_sigint_handler;
+   sigaction(SIGINT, &sa, nullptr);
+ 
+-  bool interactive = absl::GetFlag(FLAGS_i) || absl::GetFlag(FLAGS_interactive);
+   std::optional<uint32_t> entry_point = absl::GetFlag(FLAGS_entry_point);
+ 
+   absl::Status load_status = simulator.LoadProgram(file_name, entry_point);
+@@ -168,20 +181,20 @@ int main(int argc, char** argv) {
+   } else {
+     std::cerr << "Starting simulation\n";
+     auto t0 = absl::Now();
+-    absl::Status run_status = simulator.Run();
+-    if (!run_status.ok()) {
+-      LOG(ERROR) << "Error during simulation run: " << run_status.message();
+-      return 126;
+-    }
+-    absl::Status wait_status = simulator.Wait();
+-    if (!wait_status.ok()) {
+-      LOG(ERROR) << "Error while waiting for simulation: "
+-                 << wait_status.message();
++    auto result = simulator.RunBatch(max_instructions, &g_interrupted);
++    if (!result.ok()) {
++      LOG(ERROR) << result.status().message();
+       return 126;
+     }
++    std::cerr << "Stop reason: " << result->stop_reason
++              << "; instructions=" << result->instructions
++              << "; max_instructions=" << max_instructions
++              << absl::StrFormat("; pc=0x%08x\n", result->pc);
+     auto sec = absl::ToDoubleSeconds(absl::Now() - t0);
+     std::cerr << "Total cycles: " << simulator.GetCycleCount() << '\n';
+     std::cerr << absl::StrFormat("Simulation done: %0.3f sec\n", sec);
++    g_simulator = nullptr;
++    return result->exit_status;
+   }
+ 
+   g_simulator = nullptr;
+diff --git a/sim/coralnpu_simulator.cc b/sim/coralnpu_simulator.cc
+index 9dc98b5..82df443 100644
+--- a/sim/coralnpu_simulator.cc
++++ b/sim/coralnpu_simulator.cc
+@@ -14,10 +14,12 @@
+ 
+ #include "sim/coralnpu_simulator.h"
+ 
++#include <algorithm>
+ #include <cstddef>
+ #include <cstdint>
+ #include <cstring>
+ #include <iostream>
++#include <limits>
+ #include <memory>
+ #include <optional>
+ #include <string>
+@@ -176,6 +178,7 @@ CoralNPUSimulator::CoralNPUSimulator(const CoralNPUSimulatorOptions& options)
+     // received.
+     state_->AddMpauseHandler([this](const Instruction* inst) {
+       std::cerr << "mpause instruction received.\n";
++      mpause_halt_ = true;
+       top_->RequestHalt(HaltReason::kUserRequest, inst);
+       return true;
+     });
+@@ -280,6 +283,52 @@ int CoralNPUSimulator::ExitStatus() {
+   return 125;
+ }
+ 
++absl::StatusOr<CoralNPUSimulator::BatchResult> CoralNPUSimulator::RunBatch(
++    uint64_t max_instructions,
++    const volatile std::sig_atomic_t* interrupted) {
++  uint64_t executed = 0;
++  auto finish = [this, &executed](const char* reason, int status)
++      -> absl::StatusOr<BatchResult> {
++    auto pc = top_->ReadRegister("pc");
++    if (!pc.ok()) return pc.status();
++    return BatchResult{reason, status, executed, *pc};
++  };
++  mpause_halt_ = false;
++  ebreak_halt_ = false;
++  while (true) {
++    if (interrupted != nullptr && *interrupted) {
++      return finish("interrupted", 130);
++    }
++    if (max_instructions != 0 && executed == max_instructions) {
++      return finish("instruction_limit", 124);
++    }
++    // Small chunks bound signal-response latency without another thread.
++    uint64_t count = 65536;
++    if (max_instructions != 0) {
++      count = std::min(count, max_instructions - executed);
++    }
++    auto steps = Step(static_cast<int>(count));
++    if (!steps.ok()) return steps.status();
++    if (*steps <= 0 || static_cast<uint64_t>(*steps) > count ||
++        static_cast<uint64_t>(*steps) >
++            std::numeric_limits<uint64_t>::max() - executed) {
++      return absl::InternalError("Invalid batch step count");
++    }
++    executed += *steps;
++    auto reason = top_->GetLastHaltReason();
++    if (!reason.ok()) return reason.status();
++    // A guest halt on the last permitted instruction wins over the limit.
++    if (*reason != *HaltReason::kNone) {
++      if (htif_semihost_ && htif_semihost_->exit_code().has_value()) {
++        return finish("guest_exit", ExitStatus());
++      }
++      if (mpause_halt_) return finish("mpause", 0);
++      if (ebreak_halt_) return finish("ebreak", 125);
++      return finish("halted", 125);
++    }
++  }
++}
++
+ absl::Status CoralNPUSimulator::Run() { return top_->Run(); }
+ 
+ absl::StatusOr<int> CoralNPUSimulator::Step(int num_steps) {
+diff --git a/sim/coralnpu_simulator.h b/sim/coralnpu_simulator.h
+index 4165c0b..4f15baa 100644
+--- a/sim/coralnpu_simulator.h
++++ b/sim/coralnpu_simulator.h
+@@ -19,6 +19,7 @@
+ #ifndef SIM_CORALNPU_SIMULATOR_H_
+ #define SIM_CORALNPU_SIMULATOR_H_
+ 
++#include <csignal>
+ #include <cstddef>
+ #include <cstdint>
+ #include <memory>
+@@ -92,6 +93,18 @@ class CoralNPUSimulator {
+   // Returns when the simulation halts.
+   absl::Status Run();
+ 
++  struct BatchResult {
++    const char* stop_reason;
++    int exit_status;
++    uint64_t instructions;
++    uint64_t pc;
++  };
++
++  // Synchronous batch execution; zero means unlimited. No debug action points.
++  absl::StatusOr<BatchResult> RunBatch(
++      uint64_t max_instructions,
++      const volatile std::sig_atomic_t* interrupted = nullptr);
++
+   // Runs the simulation for a specified number of steps.
+   // Returns the number of steps actually executed.
+   absl::StatusOr<int> Step(int num_steps);
+@@ -157,6 +170,7 @@ class CoralNPUSimulator {
+   std::unique_ptr<mpact::sim::util::ElfProgramLoader> elf_loader_;
+   std::unique_ptr<mpact::sim::riscv::RiscV32HtifSemiHost> htif_semihost_;
+ 
++  bool mpause_halt_ = false;
+   bool ebreak_halt_ = false;
+   CoralNPUSimulatorOptions options_;
+ };
+diff --git a/sim/coralnpu_v2_sim.cc b/sim/coralnpu_v2_sim.cc
+index 381aae9..f62f9ce 100644
+--- a/sim/coralnpu_v2_sim.cc
++++ b/sim/coralnpu_v2_sim.cc
+@@ -58,6 +58,13 @@ ABSL_FLAG(std::vector<std::string>, allow_memory_region,
+           "Repeat this option to specify multiple regions.");
+ 
+ ABSL_FLAG(bool, semihost_htif, false, "HTIF semihosting");
++ABSL_FLAG(uint64_t, max_instructions, 0,
++          "Maximum batch instruction steps; 0 means unlimited. "
++          "Does not bound blocking host I/O or wall-clock time.");
++
++static volatile sig_atomic_t g_interrupted = 0;
++
++static void batch_sigint_handler(int) { g_interrupted = 1; }
+ 
+ // Static pointer to the simulator instance. Used by the control-C handler.
+ static CoralNPUSimulator* g_simulator = nullptr;
+@@ -130,6 +137,13 @@ int main(int argc, char** argv) {
+         {.start_address = start, .length = length, .permissions = permissions});
+   }
+ 
++  bool interactive = absl::GetFlag(FLAGS_i) || absl::GetFlag(FLAGS_interactive);
++  uint64_t max_instructions = absl::GetFlag(FLAGS_max_instructions);
++  if (interactive && max_instructions != 0) {
++    std::cerr << "--max_instructions requires batch mode\n";
++    return 126;
++  }
++
+   CoralNPUSimulator simulator(options);
+ 
+   // Set up control-c handling.
+@@ -138,10 +152,9 @@ int main(int argc, char** argv) {
+   sa.sa_flags = 0;
+   sigemptyset(&sa.sa_mask);
+   sigaddset(&sa.sa_mask, SIGINT);
+-  sa.sa_handler = &sim_sigint_handler;
++  sa.sa_handler = interactive ? &sim_sigint_handler : &batch_sigint_handler;
+   sigaction(SIGINT, &sa, nullptr);
+ 
+-  bool interactive = absl::GetFlag(FLAGS_i) || absl::GetFlag(FLAGS_interactive);
+   std::optional<uint32_t> entry_point = absl::GetFlag(FLAGS_entry_point);
+ 
+   absl::Status load_status = simulator.LoadProgram(file_name, entry_point);
+@@ -156,19 +169,20 @@ int main(int argc, char** argv) {
+   } else {
+     std::cerr << "Starting simulation\n";
+     auto t0 = absl::Now();
+-    absl::Status run_status = simulator.Run();
+-    if (!run_status.ok()) {
+-      LOG(ERROR) << run_status.message();
+-      return 126;
+-    }
+-    absl::Status wait_status = simulator.Wait();
+-    if (!wait_status.ok()) {
+-      LOG(ERROR) << wait_status.message();
++    auto result = simulator.RunBatch(max_instructions, &g_interrupted);
++    if (!result.ok()) {
++      LOG(ERROR) << result.status().message();
+       return 126;
+     }
++    std::cerr << "Stop reason: " << result->stop_reason
++              << "; instructions=" << result->instructions
++              << "; max_instructions=" << max_instructions
++              << absl::StrFormat("; pc=0x%08x\n", result->pc);
+     auto sec = absl::ToDoubleSeconds(absl::Now() - t0);
+     std::cerr << "Total cycles: " << simulator.GetCycleCount() << '\n';
+     std::cerr << absl::StrFormat("Simulation done: %0.3f sec\n", sec);
++    g_simulator = nullptr;
++    return result->exit_status;
+   }
+ 
+   g_simulator = nullptr;

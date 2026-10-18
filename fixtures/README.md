@@ -16,12 +16,13 @@ fixture results. Success finishes
 with `External scalar, RVV, vector FP, matrix, memory and invalid-input checks passed`.
 Each RTL simulator also runs the scalar example with tracing enabled and must
 produce a nonempty FST waveform.
-MPACT runs use `--exit_on_ebreak`, so the startup trap handler stops a failing
+MPACT runs use `--max_instructions=100000000` and `--exit_on_ebreak`, so the startup trap handler stops a failing
 program promptly. The script still requires its success marker and bounds
 timeouts and printed diagnostic output.
 
 | Example | Checks | Success marker | Models exercised by smoke.sh |
 | --- | --- | --- | --- |
+| `batch_limits.elf` | Exact instruction budgets, boundary guest exits, trap/CSR loops and cancellation; run through `bash mpact-limits.sh` | `CORAL_MPACT_LIMITS_PASS` (harness) | V2, M3, M4 |
 | `scalar.elf` | Scalar FP32 addition, output and exit | `CORAL_SCALAR_PASS` | V2, M3, M4, scalar/RVV/VME RTL |
 | `rvv.elf` | Sixteen signed int32 vector additions with loads/stores | `CORAL_RVV_PASS` | V2, M3, M4, RVV/VME RTL |
 | `rvv_fp.elf` | Sixteen FP32 vector additions and FP32-to-BF16 conversion | `CORAL_RVV_FP_PASS` | M3, M4, RVV/VME RTL |
@@ -55,8 +56,8 @@ and prints `CORAL_SUBSYSTEM_DMA_PASS` on UART1.
 
 ```sh
 bin/core_mini_axi_sim --binary=examples/scalar.elf --cycles=1000000
-bin/coralnpu_m3_sim --semihost_htif --exit_on_ebreak examples/rvv_fp.elf
-bin/coralnpu_m4_sim --semihost_htif --exit_on_ebreak examples/matrix.elf
+bin/coralnpu_m3_sim --semihost_htif --exit_on_ebreak --max_instructions=100000000 examples/rvv_fp.elf
+bin/coralnpu_m4_sim --semihost_htif --exit_on_ebreak --max_instructions=100000000 examples/matrix.elf
 bin/vme_core_mini_axi_sim --binary=examples/matrix.elf --cycles=1000000
 bin/rvv_core_mini_axi_sim --binary=examples/rvv_fp.elf --cycles=1000000
 bin/core_mini_highmem_axi_sim --binary=examples/memory_tcm1m.elf --cycles=20000000
@@ -95,7 +96,7 @@ bin/core_mini_axi_sim --cycles=20000000 \
 # Optional TCM backdoor loading; external payload loading is direct in both modes:
 bin/core_mini_axi_sim --cycles=20000000 --backdoor_load \
   --binary=examples/external_payload.elf
-bin/coralnpu_v2_sim --semihost_htif --exit_on_ebreak \
+bin/coralnpu_v2_sim --semihost_htif --exit_on_ebreak --max_instructions=100000000 \
   examples/external_payload.elf
 ```
 
@@ -232,7 +233,19 @@ A normal halt (`mpause`) returns 0. RTL returns 124 at its cycle limit; core
 faults and MPACT `--exit_on_ebreak` stops return 125. Load/simulator errors
 return 126. These conventional codes can also be returned by a guest; they
 are not a separate namespace. Traps handled by guest software are ordinary
-guest execution. MPACT currently still needs an external timeout for loops.
+guest execution. MPACT returns 124 when `--max_instructions=N` is exhausted,
+and 130 on batch Ctrl-C. The default budget, 0, is unlimited; the flag is
+incompatible with interactive mode. Guest exit or mpause exactly at the
+boundary takes precedence over the limit. Stderr reports the stop reason,
+instruction count, budget and final PC. Steps include trap instructions and
+handler execution; vector/matrix instructions each count as one step.
+
+Retain an external wall-clock timeout: an instruction budget cannot interrupt
+blocked HTIF host I/O or a simulator bug. `bash mpact-limits.sh` checks exact
+boundaries, chunk transitions, trap/CSR loops, large 64-bit budget arguments,
+cancellation and external termination of a blocked input operation on all
+three MPACT binaries. Its `batch_limits.elf` uses fixed entry points beginning
+at `0x1000` to bypass CRT startup for exact counts.
 
 `host-contract.sh` checks these outcomes, including an RTL cycle limit during
 startup. It uses `timeout --preserve-status` so an external kill cannot pass

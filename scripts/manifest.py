@@ -345,10 +345,12 @@ def mpact(executable, revision):
             "clock": {"configured_frequency_mhz": None, "note": "Cycle counts are instruction counts, not timing"},
             "boot": {"loader": "MPACT ELF loader writes PT_LOAD segments directly into functional memory",
                      "entry": "ELF e_entry unless --entry_point is given",
-                     "steps": [executable + " --semihost_htif --exit_on_ebreak <elf>"]},
+                     "steps": [executable + " --semihost_htif --exit_on_ebreak --max_instructions=100000000 <elf>"]},
             "termination": "Returns the low 8 bits of the guest HTIF exit code, 0 for mpause, 125 for "
                            "ebreak with --exit_on_ebreak or another abnormal halt, and 126 for a load/simulator "
-                           "error. Guest exits may use the same numeric codes; traps may continue executing.",
+                           "error. Batch instruction-budget exhaustion returns 124; batch SIGINT returns 130. "
+                           "Guest exits may use the same numeric codes; traps may continue executing. "
+                           "Instruction budgets do not bound blocked host I/O or wall-clock time.",
             "runtime_overrides": [
                 {"flag": "--allow_memory_region", "default": ["0x0:0x2000:rx", "0x10000:0x8000:rw",
                                                               "0x20000000:0x400000:rw"],
@@ -363,6 +365,9 @@ def mpact(executable, revision):
                  "description": "Stops the run at ebreak instead of trapping"},
                 {"flag": "--entry_point", "default": None, "changes_configuration": False,
                  "description": "Overrides the ELF entry point"},
+                {"flag": "--max_instructions", "default": 0, "changes_configuration": False,
+                 "description": "Maximum batch instruction steps; 0 is unlimited. Incompatible with interactive "
+                                "mode. Does not bound blocking host I/O or wall-clock time"},
                 {"flag": "--interactive", "default": False, "changes_configuration": False,
                  "description": "Interactive debugger"},
             ],

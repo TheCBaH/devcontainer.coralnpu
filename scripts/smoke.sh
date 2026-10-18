@@ -29,7 +29,7 @@ rtl() {
   check "$1" "$root/bin/$2" --cycles="${4:-1000000}" --binary="$root/examples/$3"
 }
 mpact() {
-  check "$1" "$root/bin/$2" --semihost_htif --exit_on_ebreak "$root/examples/$3"
+  check "$1" "$root/bin/$2" --semihost_htif --exit_on_ebreak --max_instructions=100000000 "$root/examples/$3"
 }
 for sim in core_mini_axi_sim rvv_core_mini_axi_sim vme_core_mini_axi_sim; do
   check CORAL_SCALAR_PASS "$root/bin/$sim" --cycles=1000000 --trace --binary="$root/examples/scalar.elf"
@@ -83,4 +83,5 @@ for sim in "$root"/bin/*; do
   test "$status" -ne 127
 done
 bash "$root/host-contract.sh"
+bash "$root/mpact-limits.sh"
 echo "External scalar, RVV, vector FP, matrix, memory and invalid-input checks passed"

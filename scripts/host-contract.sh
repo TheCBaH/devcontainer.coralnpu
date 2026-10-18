@@ -26,7 +26,7 @@ for path in "$root"/bin/*; do
   sim=${path##*/}
   if [[ "$sim" = coralnpu_* ]]; then
     elf=exit_status.elf
-    args=("$path" --semihost_htif --exit_on_ebreak "$root/examples/exit_status.elf")
+    args=("$path" --semihost_htif --exit_on_ebreak --max_instructions=100000000 "$root/examples/exit_status.elf")
   else
     case "$sim" in
       *highmem*|*512kb*) elf=exit_status_tcm512k.elf ;;
@@ -67,7 +67,7 @@ for path in "$root"/bin/*; do
     *) elf=host_ram.elf ;;
   esac
   if [[ "$sim" = coralnpu_* ]]; then
-    args=("$path" --semihost_htif --exit_on_ebreak "$root/examples/$elf")
+    args=("$path" --semihost_htif --exit_on_ebreak --max_instructions=100000000 "$root/examples/$elf")
   else
     args=("$path" --cycles=100000 --binary="$root/examples/$elf")
   fi
@@ -106,7 +106,7 @@ for path in "$root"/bin/*; do
     *) elf=host_io.elf ;;
   esac
   if [[ "$sim" = coralnpu_* ]]; then
-    args=("$path" --semihost_htif --exit_on_ebreak "$root/examples/$elf")
+    args=("$path" --semihost_htif --exit_on_ebreak --max_instructions=100000000 "$root/examples/$elf")
   else
     args=("$path" --cycles=100000 --binary="$root/examples/$elf")
   fi
@@ -128,7 +128,7 @@ for sim in core_mini_axi_sim coralnpu_v2_sim; do
   if [ "$sim" = core_mini_axi_sim ]; then
     args+=(--cycles=20000000 --binary="$root/examples/external_payload.elf")
   else
-    args+=(--semihost_htif --exit_on_ebreak "$root/examples/external_payload.elf")
+    args+=(--semihost_htif --exit_on_ebreak --max_instructions=100000000 "$root/examples/external_payload.elf")
   fi
   CORAL_HOST_TIMEOUT=600 expect_status 0 '' "${args[@]}"
   grep -q 'CORAL_EXTERNAL_PAYLOAD_PASS bytes=1048576 tile=256 checksum=2287547e' stdout
@@ -160,7 +160,7 @@ for sim in core_mini_axi_sim coralnpu_v2_sim; do
   if [ "$sim" = core_mini_axi_sim ]; then
     args=("$root/bin/$sim" --cycles=20000000 --binary="$scratch/corrupt-payload.elf")
   else
-    args=("$root/bin/$sim" --semihost_htif --exit_on_ebreak "$scratch/corrupt-payload.elf")
+    args=("$root/bin/$sim" --semihost_htif --exit_on_ebreak --max_instructions=100000000 "$scratch/corrupt-payload.elf")
   fi
   CORAL_HOST_TIMEOUT=600 expect_status 125 '' "${args[@]}"
   grep -q CORAL_EXTERNAL_PAYLOAD_FAIL stdout
