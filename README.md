@@ -113,8 +113,9 @@ and memory guest ELFs, larger-TCM builds of them, their sources under
 `provenance/fixtures/`, and `smoke.sh`. See `examples/README.md` in the
 archive, or the [example guide](https://github.com/TheCBaH/devcontainer.coralnpu/blob/main/fixtures/README.md),
 for expected calculations, model compatibility, commands and test coverage.
-The RTL simulators generate FST waveforms with `--trace`; the example guide
-includes the output location and conversion to VCD with `fst2vcd`.
+The RTL simulators generate FST waveforms with `--trace`, or with
+`--trace_file=path.fst` to choose an output path. See the example guide for
+waveform commands.
 
 ## Development
 

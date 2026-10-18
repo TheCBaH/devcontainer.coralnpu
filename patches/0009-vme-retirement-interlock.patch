@@ -1,11 +1,12 @@
+diff --git a/hdl/verilog/rvv/design/Zvt/zvt.sv b/hdl/verilog/rvv/design/Zvt/zvt.sv
+index 75ad76f9..5b87be14 100644
 --- a/hdl/verilog/rvv/design/Zvt/zvt.sv
 +++ b/hdl/verilog/rvv/design/Zvt/zvt.sv
-@@ -125,7 +125,9 @@
+@@ -127,7 +127,8 @@ module zvt (
      .vmelsuresRdy     (vmelsuresRdy),
      .peCmdVld         (peCmdVld),
      .peCmdRdy         (peCmdRdy),
--    .peBusy           (peBusy),
-+    // Each block's retirement FIFO accepts one result per cycle.
+-    .peBusy           (peBusy || (|blkRtVld)),
 +    // Keep misc results behind the staggered PE retirement pulses.
 +    .peBusy           (peBusy || (|peRtVld) || (|blkRtVld)),
      .peReadMtIdx      (peReadMtIdx),

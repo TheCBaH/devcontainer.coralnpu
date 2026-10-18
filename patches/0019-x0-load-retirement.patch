@@ -21,7 +21,7 @@ index 078d4047..fb3c4f4f 100644
      name = "coralnpu_rvv",
      srcs = [
 diff --git a/hdl/chisel/src/coralnpu/RetirementBuffer.scala b/hdl/chisel/src/coralnpu/RetirementBuffer.scala
-index 54b9a795..33b2ce8b 100644
+index f049b2c2..9caeb690 100644
 --- a/hdl/chisel/src/coralnpu/RetirementBuffer.scala
 +++ b/hdl/chisel/src/coralnpu/RetirementBuffer.scala
 @@ -26,6 +26,7 @@ class RetirementBufferIO(p: Parameters) extends Bundle {
@@ -48,7 +48,7 @@ index 54b9a795..33b2ce8b 100644
      instr
    }
  
-@@ -409,7 +412,8 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
+@@ -428,7 +431,8 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
    for (i <- 0 until bufferSize) {
      val bufferEntry = instBuffer.io.dataOut(i)
      // Check if this entry is an operation that doesn't require a register write, but is not a store.
@@ -58,7 +58,7 @@ index 54b9a795..33b2ce8b 100644
      val storeInstr      = bufferEntry.idx === storeRegIdx
  
      // Check which incoming (scalar,float) write port matches this entry's needed address.
-@@ -446,6 +450,8 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
+@@ -465,6 +469,8 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
        faultRetire.valid && Mux(isRvvFault, rvvTagMatch, bufferEntry.addr === faultRetire.bits.mepc)
      // The entry is active if it's validly enqueued.
      val validBufferEntry = (i.U < instBuffer.io.nEnqueued)
@@ -67,16 +67,16 @@ index 54b9a795..33b2ce8b 100644
  
      // Find the index of the first write port that provides the needed data.
      val scalarWriteIdx = PriorityEncoder(scalarWriteIdxMap)
-@@ -551,7 +557,7 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
-     // This differs from how the scalar/float scoreboards restrict dispatch.
+@@ -559,7 +565,7 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
+         (bufferEntry.isVector && tileDe2RtMatch)
      val dataReady = (scalarWriteIdxMap.reduce(_ | _) || floatWriteIdxMap.reduce(
        _ | _
--    ) || vectorReady || nonWritingInstr || (bufferEntry.isTile && tileReady) || (storeInstr && storeComplete.valid && storeComplete.bits === bufferEntry.addr))
-+    ) || vectorReady || nonWritingInstr || loadReady || (bufferEntry.isTile && tileReady) || (storeInstr && storeComplete.valid && storeComplete.bits === bufferEntry.addr))
+-    ) || vectorReady || nonWritingInstr || (bufferEntry.isTile && tileReady) || (storeInstr && storeReady))
++    ) || vectorReady || nonWritingInstr || loadReady || (bufferEntry.isTile && tileReady) || (storeInstr && storeReady))
      val isControlFlow = bufferEntry.isControlFlow
      val isBranch      = bufferEntry.isBranch
      // For the last entry in the buffer, we can't see the next instruction yet (it hasn't been enqueued or wrapped visibly).
-@@ -691,10 +697,10 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
+@@ -699,10 +705,10 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
      regAfterFlush := false.B
    }
  
@@ -201,10 +201,10 @@ index 00000000..c230971d
 +  }
 +}
 diff --git a/hdl/chisel/src/coralnpu/scalar/Decode.scala b/hdl/chisel/src/coralnpu/scalar/Decode.scala
-index 414a690e..c54d126f 100644
+index 6a8a3994..09e471a2 100644
 --- a/hdl/chisel/src/coralnpu/scalar/Decode.scala
 +++ b/hdl/chisel/src/coralnpu/scalar/Decode.scala
-@@ -382,6 +382,7 @@ class Dispatch(p: Parameters) extends Module {
+@@ -383,6 +383,7 @@ class Dispatch(p: Parameters) extends Module {
  
      val fbusPortAddr = Option.when(p.enableFloat)(Output(UInt(5.W)))
  
@@ -212,9 +212,9 @@ index 414a690e..c54d126f 100644
      val retirement_buffer_nSpace       = Input(UInt(log2Ceil(p.retirementBufferSize + 1).W))
      val retirement_buffer_empty        = Input(Bool())
      val retirement_buffer_trap_pending = Input(Bool())
-@@ -915,11 +916,13 @@ class DispatchV2(p: Parameters) extends Dispatch(p) {
-         .getOrElse(Seq()),
-       LsuOp
+@@ -939,11 +940,13 @@ class DispatchV2(p: Parameters) extends Dispatch(p) {
+         }
+         .getOrElse(Seq())
      )
 -    io.lsu(i).valid      := tryDispatch && lsu.valid
 -    io.lsu(i).bits.store := io.inst(i).bits.inst(5)
@@ -232,7 +232,7 @@ index 414a690e..c54d126f 100644
        io.lsu(i).bits.elemWidth.get     := io.inst(i).bits.inst(14, 12)
        io.lsu(i).bits.nfields.get       := io.inst(i).bits.inst(31, 29)
 diff --git a/hdl/chisel/src/coralnpu/scalar/Lsu.scala b/hdl/chisel/src/coralnpu/scalar/Lsu.scala
-index 57ffc84e..58a64cea 100644
+index d03ca284..ae886f8f 100644
 --- a/hdl/chisel/src/coralnpu/scalar/Lsu.scala
 +++ b/hdl/chisel/src/coralnpu/scalar/Lsu.scala
 @@ -53,6 +53,7 @@ class Lsu(p: Parameters) extends Module {
@@ -323,7 +323,7 @@ index 57ffc84e..58a64cea 100644
    io.floatWriteback.foreach { x =>
      x.valid     := writebackReq.float.get.valid
      x.bits.addr := state.rd
-@@ -2127,6 +2136,17 @@ class LsuV3(p: Parameters) extends Lsu(p) {
+@@ -2133,6 +2142,17 @@ class LsuV3(p: Parameters) extends Lsu(p) {
    // status reporting
    io.active        := rs.io.nEnqueued > 0.U || !slot.io.active || flushCmd.valid
    io.storeComplete := MakeValid(slot.io.storeComplete, slot.io.pc)
@@ -342,7 +342,7 @@ index 57ffc84e..58a64cea 100644
    io.flush.valid  := flushCmd.valid
    io.flush.pcNext := flushCmd.bits.pcNext
 diff --git a/hdl/chisel/src/coralnpu/scalar/SCore.scala b/hdl/chisel/src/coralnpu/scalar/SCore.scala
-index 437738e4..eccd2ec2 100644
+index f3e8347b..acf51f94 100644
 --- a/hdl/chisel/src/coralnpu/scalar/SCore.scala
 +++ b/hdl/chisel/src/coralnpu/scalar/SCore.scala
 @@ -68,6 +68,7 @@ class SCore(p: Parameters) extends Module {
@@ -353,7 +353,7 @@ index 437738e4..eccd2ec2 100644
    dispatch.io.retirement_buffer_nSpace       := rob_io.nSpace
    dispatch.io.retirement_buffer_empty        := rob_io.empty
    dispatch.io.retirement_buffer_trap_pending := rob_io.trapPending
-@@ -110,6 +111,7 @@ class SCore(p: Parameters) extends Module {
+@@ -112,6 +113,7 @@ class SCore(p: Parameters) extends Module {
    }
    rob_io.fault         := fault_manager.io.out
    rob_io.storeComplete := lsu.io.storeComplete

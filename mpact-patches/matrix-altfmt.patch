@@ -1,32 +1,19 @@
+diff --git a/riscv/riscv_zvt_instructions.cc b/riscv/riscv_zvt_instructions.cc
+index 6bc5987..8710788 100644
 --- a/riscv/riscv_zvt_instructions.cc
 +++ b/riscv/riscv_zvt_instructions.cc
-@@ -135,14 +135,20 @@
-   // Spec 15.1.1.4: vl = 0; mtype = rs1; then vtype = rs2 as if by vsetvl.
-   vector_state->set_vector_length(0);
-   matrix_state->set_mtype(kRs1);
--  vector_state->SetVectorType(kRs2);
-+  // Matrix configuration permits altfmt; ordinary RVV configuration does not.
+@@ -168,11 +168,13 @@ void RiscVZvtMsetMtype(const Instruction* inst) {
+   }
+   uint32_t new_vtype =
+       (kRs2 & ~0b1100'0111u) | (1u << 7) | (1u << 6) | vlmul;
+-  vector_state->SetVectorType(new_vtype);
 +  constexpr uint32_t kAltfmtMask = 1u << 8;
-+  vector_state->SetVectorType(kRs2 & ~kAltfmtMask);
- 
-   if (matrix_state->mtwiden() == 0) {
++  vector_state->SetVectorType(new_vtype & ~kAltfmtMask);
+   if (vector_state->is_vill()) {
      matrix_state->set_mtype(0);
      return;
    }
- 
-   const int kSewBits = vector_state->selected_element_width() * 8;
-+  if (kSewBits == 0) {
-+    matrix_state->set_mtype(0);
-+    return;
-+  }
-   const int kTwiden = matrix_state->twiden();
-   const int kTileElementWidth = kSewBits * kTwiden;
-   const int kEffectiveTileElements = kTileElementWidth < 64
-@@ -156,6 +162,7 @@
-   // TODO: also derive vtype.vlmul per the spec's min() formula; deferred while
-   // the v0.3 encoding firms up.
-   vector_state->SetVectorType(vector_state->vtype() | (1u << 6) | (1u << 7));
 +  vector_state->set_vtype(vector_state->vtype() | (kRs2 & kAltfmtMask));
  
-   // kVill if the resulting TILE_ELEMENT_WIDTH is unsupported for the kBase
-   // (SEW*TWIDEN > ELEN).
+   const int kSewBits = vector_state->selected_element_width() * 8;
+   const int kTwiden = matrix_state->twiden();

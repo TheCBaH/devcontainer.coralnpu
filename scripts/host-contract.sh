@@ -78,6 +78,7 @@ for path in "$root"/bin/*; do
     expect_status 0 0123456789abcdef "${args[@]}" --backdoor_load
     grep -q CORAL_HOST_RAM_PASS stdout
     cp "$root/examples/$elf" bad.elf
+    chmod u+w bad.elf
     phoff=$(od -An -tu4 -j28 -N4 bad.elf)
     phnum=$(od -An -tu2 -j44 -N2 bad.elf)
     found=false
@@ -140,6 +141,7 @@ for sim in core_mini_axi_sim coralnpu_v2_sim; do
 done
 
 cp "$root/examples/external_payload.elf" corrupt-payload.elf
+chmod u+w corrupt-payload.elf
 payload_phoff=$(od -An -tu4 -j28 -N4 corrupt-payload.elf)
 payload_phnum=$(od -An -tu2 -j44 -N2 corrupt-payload.elf)
 payload_found=false

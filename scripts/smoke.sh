@@ -37,6 +37,10 @@ for sim in core_mini_axi_sim rvv_core_mini_axi_sim vme_core_mini_axi_sim; do
   test -n "$waveform"
   test -s "$waveform"
   echo "FST waveform generated: $waveform ($(stat -c %s "$waveform") bytes)"
+  custom_waveform="$PWD/$sim custom.fst"
+  check CORAL_SCALAR_PASS "$root/bin/$sim" --cycles=1000000 --trace_file="$custom_waveform" --binary="$root/examples/scalar.elf"
+  test -s "$custom_waveform"
+  echo "Explicit FST waveform generated: $custom_waveform"
   rtl CORAL_X0_LOAD_PASS "$sim" x0_load.elf
   rtl CORAL_TRAP_ADDRESS_PASS "$sim" trap_address.elf
   rtl CORAL_MEMORY_PASS "$sim" memory.elf

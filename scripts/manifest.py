@@ -259,6 +259,8 @@ def standalone(executable, elaboration, header, revision):
                  "description": "Simulation cycle limit"},
                 {"flag": "--trace", "default": False, "changes_configuration": False,
                  "description": "Write an FST waveform under /tmp"},
+                {"flag": "--trace_file", "default": "", "changes_configuration": False,
+                 "description": "Write an FST waveform to this path; enables tracing"},
                 {"flag": "--debug_axi", "default": False, "changes_configuration": False,
                  "description": "Log AXI transactions"},
                 {"flag": "--instr_trace", "default": False, "changes_configuration": False,

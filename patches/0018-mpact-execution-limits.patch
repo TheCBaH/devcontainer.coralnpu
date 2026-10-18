@@ -1,8 +1,9 @@
 diff --git a/rules/repo_defs.bzl b/rules/repo_defs.bzl
+index 65c59862..be26156d 100644
 --- a/rules/repo_defs.bzl
 +++ b/rules/repo_defs.bzl
-@@ -110,6 +110,7 @@ def define_mpact_repos():
-             "@coralnpu_hw//third_party/coralnpu_mpact:0007-Add-matrix-tile-DPI-accessors.patch",
+@@ -111,6 +111,7 @@ def define_mpact_repos():
+             "@coralnpu_hw//third_party/coralnpu_mpact:0008-CoralNPU-M4-alignment.patch",
              "@coralnpu_hw//portable_patches:m4-bf16-decoder.patch",
              "@coralnpu_hw//portable_patches:host-contract.patch",
 +            "@coralnpu_hw//portable_patches:execution-limits.patch",

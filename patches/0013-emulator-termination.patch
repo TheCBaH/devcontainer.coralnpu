@@ -1,17 +1,17 @@
 diff --git a/rules/repo_defs.bzl b/rules/repo_defs.bzl
-index 3c22a026..d17dbad8 100644
+index 42b57dc9..65c59862 100644
 --- a/rules/repo_defs.bzl
 +++ b/rules/repo_defs.bzl
-@@ -109,6 +109,7 @@ def define_mpact_repos():
-             "@coralnpu_hw//third_party/coralnpu_mpact:0006-Fix-svdpi-includes.patch",
+@@ -110,6 +110,7 @@ def define_mpact_repos():
              "@coralnpu_hw//third_party/coralnpu_mpact:0007-Add-matrix-tile-DPI-accessors.patch",
+             "@coralnpu_hw//third_party/coralnpu_mpact:0008-CoralNPU-M4-alignment.patch",
              "@coralnpu_hw//portable_patches:m4-bf16-decoder.patch",
 +            "@coralnpu_hw//portable_patches:host-contract.patch",
          ],
          patch_args = ["-p1"],
      )
 diff --git a/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc b/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
-index 4fbe91ad..c27227ff 100644
+index 9008da27..349fa609 100644
 --- a/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
 +++ b/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
 @@ -18,7 +18,7 @@
@@ -23,32 +23,42 @@ index 4fbe91ad..c27227ff 100644
  
  #include "absl/flags/flag.h"
  #include "absl/flags/parse.h"
-@@ -40,18 +40,13 @@ ABSL_FLAG(bool, debug_axi, false, "Enable AXI traffic debugging");
+@@ -41,21 +41,14 @@ ABSL_FLAG(bool, debug_axi, false, "Enable AXI traffic debugging");
  ABSL_FLAG(bool, instr_trace, false, "Log instructions to console");
  ABSL_FLAG(bool, backdoor_load, false, "Enable high-speed backdoor code loading");
  
--static bool run(const char* name, const std::string binary, const int cycles,
+-static bool run(const char *name, const std::string binary, const int cycles, const bool trace,
+-                const std::string &trace_file, const bool debug_axi, const bool instr_trace,
 +static int run(const char* name, const std::string binary, const int cycles,
-                 const bool trace, const bool debug_axi, const bool instr_trace,
++                const bool trace, const std::string& trace_file,
++                const bool debug_axi, const bool instr_trace,
                  const bool backdoor_load) {
 -  absl::Mutex halted_mtx;
 -  absl::CondVar halted_cv;
+-  bool simulation_halted = false;
+-  bool simulation_done   = false;
    CoreMiniAxi_tb tb(CoreMiniAxi_tb::kCoreMiniAxiModelName, cycles, /* random= */ false, debug_axi,
                      instr_trace, backdoor_load,
                      /*wfi_cb=*/std::nullopt,
--                    /*halted_cb=*/[&halted_mtx, &halted_cv]() {
+-                    /*halted_cb=*/[&halted_mtx, &halted_cv, &simulation_halted]() {
 -                      absl::MutexLock lock_(&halted_mtx);
+-                      simulation_halted = true;
 -                      halted_cv.SignalAll();
 -                    });
 +                    /*halted_cb=*/[]() { sc_stop(); });
    // Ensure we call sc_start @0 time, before we startup anything else.
    // This allows Verilog `initial` blocks to run before we try to interact with the
    // DUT model.
-@@ -61,24 +56,19 @@ static bool run(const char* name, const std::string binary, const int cycles,
-     tb.trace(tb.core());
+@@ -65,33 +58,19 @@ static bool run(const char *name, const std::string binary, const int cycles, co
+     tb.trace(tb.core(), trace_file.c_str());
    }
  
--  std::thread sc_main_thread([&tb]() { tb.start(); });
+-  std::thread sc_main_thread([&tb, &halted_mtx, &halted_cv, &simulation_done]() {
+-    tb.start();
+-    absl::MutexLock lock_(&halted_mtx);
+-    simulation_done = true;
+-    halted_cv.SignalAll();
+-  });
 -
 -  CHECK_OK(tb.LoadElfSync(binary));
 -  CHECK_OK(tb.ClockGateSync(false));
@@ -56,11 +66,16 @@ index 4fbe91ad..c27227ff 100644
 -
 -  {
 -    absl::MutexLock lock_(&halted_mtx);
--    halted_cv.Wait(&halted_mtx);
+-    while (!simulation_halted && !simulation_done) {
+-      halted_cv.Wait(&halted_mtx);
+-    }
 -  }
 -
--  if (!tb.io_fault && !tb.tohost_halt) {
--    CHECK_OK(tb.CheckStatusSync());
+-  if (simulation_halted) {
+-    if (!tb.io_fault && !tb.tohost_halt) {
+-      CHECK_OK(tb.CheckStatusSync());
+-    }
+-    sc_stop();
 +  auto load_status = tb.LoadElfAsync(binary);
 +  if (!load_status.ok()) {
 +    LOG(ERROR) << load_status.message();
@@ -70,7 +85,6 @@ index 4fbe91ad..c27227ff 100644
 +  CHECK_OK(tb.ResetAsync(false));
 +  tb.start();
  
--  sc_stop();
 -  sc_main_thread.join();
 -  return (!tb.io_fault && !(tb.tohost_halt && tb.tohost_val != 1));
 +  if (tb.tohost_halt) return tb.tohost_val & 0xff;
@@ -80,7 +94,7 @@ index 4fbe91ad..c27227ff 100644
  }
  
  extern "C" int sc_main(int argc, char** argv) {
-@@ -93,11 +83,16 @@ extern "C" int sc_main(int argc, char** argv) {
+@@ -106,13 +85,17 @@ extern "C" int sc_main(int argc, char** argv) {
  
    if (absl::GetFlag(FLAGS_binary) == "") {
      LOG(ERROR) << "--binary is required!";
@@ -88,13 +102,16 @@ index 4fbe91ad..c27227ff 100644
 +    return 126;
    }
  
--  return run(Sysc_tb::get_name(argv[0]), absl::GetFlag(FLAGS_binary),
--      absl::GetFlag(FLAGS_cycles), absl::GetFlag(FLAGS_trace),
--      absl::GetFlag(FLAGS_debug_axi), absl::GetFlag(FLAGS_instr_trace),
--      absl::GetFlag(FLAGS_backdoor_load)) ? 0 : 1;
+-  return run(Sysc_tb::get_name(argv[0]), absl::GetFlag(FLAGS_binary), absl::GetFlag(FLAGS_cycles),
+-             absl::GetFlag(FLAGS_trace), absl::GetFlag(FLAGS_trace_file),
+-             absl::GetFlag(FLAGS_debug_axi), absl::GetFlag(FLAGS_instr_trace),
+-             absl::GetFlag(FLAGS_backdoor_load))
+-             ? 0
+-             : 1;
 +  try {
 +    return run(Sysc_tb::get_name(argv[0]), absl::GetFlag(FLAGS_binary),
 +        absl::GetFlag(FLAGS_cycles), absl::GetFlag(FLAGS_trace),
++        absl::GetFlag(FLAGS_trace_file),
 +        absl::GetFlag(FLAGS_debug_axi), absl::GetFlag(FLAGS_instr_trace),
 +        absl::GetFlag(FLAGS_backdoor_load));
 +  } catch (const sc_core::sc_report& report) {
@@ -148,19 +165,8 @@ index a8f96f82..bf1ae895 100644
      } else {
        tohost_read_addr_ = wdata0;
        tohost_read_event_.notify();
-diff --git a/third_party/patches/patches.bzl b/third_party/patches/patches.bzl
-index fba96e03..5df26e99 100644
---- a/third_party/patches/patches.bzl
-+++ b/third_party/patches/patches.bzl
-@@ -27,4 +27,5 @@ MPACT_RISCV_PATCHES = [
- ] + [
-     "@coralnpu_hw//third_party/patches:" + patch
-     for patch in MPACT_RISCV_PATCH_FILES
--] + ["@coralnpu_hw//portable_patches:matrix-altfmt.patch"]
-+] + ["@coralnpu_hw//portable_patches:matrix-altfmt.patch",
-+     "@coralnpu_hw//portable_patches:htif-exit-status.patch"]
 diff --git a/tests/verilator_sim/sysc_tb.h b/tests/verilator_sim/sysc_tb.h
-index 3b6b24c4..996d3627 100644
+index 4d4e870b..d263bf65 100644
 --- a/tests/verilator_sim/sysc_tb.h
 +++ b/tests/verilator_sim/sysc_tb.h
 @@ -144,17 +144,20 @@ struct Sysc_tb : public sc_module {
@@ -189,7 +195,7 @@ index 3b6b24c4..996d3627 100644
  
      if (tf_) {
        tf_->dump(sim_time_++);  // last falling edge
-@@ -251,7 +254,8 @@ struct Sysc_tb : public sc_module {
+@@ -257,7 +260,8 @@ struct Sysc_tb : public sc_module {
    const int loops_;
    int loop_;
    bool error_;
@@ -199,7 +205,7 @@ index 3b6b24c4..996d3627 100644
  
    sc_in<bool> clock_;
  
-@@ -286,6 +290,7 @@ struct Sysc_tb : public sc_module {
+@@ -292,6 +296,7 @@ struct Sysc_tb : public sc_module {
        loop_++;
      } else {
        printf("\nInfo: loop limit \"%d\" reached\n", loops_);
@@ -207,3 +213,14 @@ index 3b6b24c4..996d3627 100644
        sc_stop();
      }
    }
+diff --git a/third_party/patches/patches.bzl b/third_party/patches/patches.bzl
+index 1335f1ce..e49fa880 100644
+--- a/third_party/patches/patches.bzl
++++ b/third_party/patches/patches.bzl
+@@ -28,4 +28,5 @@ MPACT_RISCV_PATCHES = [
+ ] + [
+     "@coralnpu_hw//third_party/patches:" + patch
+     for patch in MPACT_RISCV_PATCH_FILES
+-] + ["@coralnpu_hw//portable_patches:matrix-altfmt.patch"]
++] + ["@coralnpu_hw//portable_patches:matrix-altfmt.patch",
++     "@coralnpu_hw//portable_patches:htif-exit-status.patch"]
