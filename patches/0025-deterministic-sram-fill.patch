@@ -1,0 +1,90 @@
+diff --git a/hdl/verilog/Sram.v b/hdl/verilog/Sram.v
+index 352c4a15..a938200f 100644
+--- a/hdl/verilog/Sram.v
++++ b/hdl/verilog/Sram.v
+@@ -290,7 +290,9 @@ module Sram #(
+   import "DPI-C" function chandle sram_init(
+     input longint global_addr,
+     input longint size_bytes,
+-    input int width_bytes
++    input int width_bytes,
++    input int fill,
++    input int seed
+   );
+   import "DPI-C" function void sram_read(
+     input chandle handle,
+@@ -309,8 +311,16 @@ module Sram #(
+   reg [127:0] rdata_reg;
+   assign rdata = rdata_reg;
+ 
+-  initial begin
+-    backdoor_handle = sram_init(GLOBAL_BASE_ADDR, NUM_ENTRIES * SRAM_WIDTH_BYTES, SRAM_WIDTH_BYTES);
++  initial begin : init
++    // Unloaded bytes follow Verilator's reset convention: 0 zeros, 1 ones,
++    // 2 random from +verilator+seed (0 or absent: a fresh seed).
++    int fill, seed;
++    fill = 0;
++    seed = 0;
++    void'($value$plusargs("verilator+rand+reset+%d", fill));
++    void'($value$plusargs("verilator+seed+%d", seed));
++    backdoor_handle = sram_init(GLOBAL_BASE_ADDR, NUM_ENTRIES * SRAM_WIDTH_BYTES, SRAM_WIDTH_BYTES,
++                                fill, seed);
+   end
+ 
+   final begin
+diff --git a/hdl/verilog/sram_backdoor.cc b/hdl/verilog/sram_backdoor.cc
+index 516d2311..0d993949 100644
+--- a/hdl/verilog/sram_backdoor.cc
++++ b/hdl/verilog/sram_backdoor.cc
+@@ -56,18 +56,19 @@ bool ApplyLoadToSram(BackdoorSram &sram, uint64_t load_addr,
+ }
+ 
+ void *RegisterSram(uint64_t global_addr, size_t size_bytes,
+-                   uint32_t width_bytes) {
++                   uint32_t width_bytes, int32_t fill, uint32_t seed) {
+   BackdoorSram *sram = new BackdoorSram;
+   sram->global_addr = global_addr;
+-  sram->data.resize(size_bytes);
++  sram->data.assign(size_bytes, fill == 1 ? 0xff : 0);
+   sram->width_bytes = width_bytes;
+ 
+-  // Randomize memory content for simulation.
+-  std::random_device rd;
+-  std::mt19937 gen(rd());
+-  std::uniform_int_distribution<> dis(0, 255);
+-  for (size_t i = 0; i < size_bytes; ++i) {
+-    sram->data[i] = dis(gen);
++  if (fill == 2) {
++    std::mt19937 gen(seed ? seed ^ static_cast<uint32_t>(global_addr)
++                          : std::random_device{}());
++    std::uniform_int_distribution<> dis(0, 255);
++    for (auto &byte : sram->data) {
++      byte = dis(gen);
++    }
+   }
+ 
+   registered_srams[global_addr] = sram;
+@@ -135,8 +136,8 @@ extern "C" {
+ using namespace coralnpu;
+ 
+ void *sram_init(uint64_t global_addr, uint64_t size_bytes,
+-                uint32_t width_bytes) {
+-  return RegisterSram(global_addr, size_bytes, width_bytes);
++                uint32_t width_bytes, int32_t fill, uint32_t seed) {
++  return RegisterSram(global_addr, size_bytes, width_bytes, fill, seed);
+ }
+ 
+ void sram_read(void *handle, uint32_t addr, svBitVecVal *data) {
+diff --git a/hw_sim/core_mini_axi_simulator.cc b/hw_sim/core_mini_axi_simulator.cc
+index c9557244..b5d1a84d 100644
+--- a/hw_sim/core_mini_axi_simulator.cc
++++ b/hw_sim/core_mini_axi_simulator.cc
+@@ -44,7 +44,7 @@ constexpr int kDefaultTimeoutCycles = 10000;
+ class CoreMiniAxiSimulator final : public CoralNPUSimulator {
+  public:
+   explicit CoreMiniAxiSimulator(const CoralNPUSimulatorOptions &options = {})
+-      : context_(), wrapper_(&context_, options) {
++      : context_(), wrapper_((context_.commandArgs(0, static_cast<const char **>(nullptr)), &context_), options) {
+     ddr_memory_.resize(1024 * 1024 * 1024, 0);  // 1GB DDR
+     auto read_cb = [this](const AxiAddr &axi_addr) { return this->ReadCallback(axi_addr); };
+     wrapper_.RegisterReadCallback(read_cb);

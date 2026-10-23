@@ -17,7 +17,7 @@ VME_TESTS = ("vme_altfmt_test", "vme_decode_test", "vme_load_store_test", "vme_m
 RVV_MATMUL_TESTS = ("rvv_matmul_fp32", "rvv_matmul_int8", "rvv_matmul_bf16")
 FIXTURES = ("batch_limits", "x0_load", "x0_load_tcm512k", "scalar", "rvv", "rvv_fp", "matrix", "memory", "memory_tcm512k", "memory_tcm1m",
             "scalar_tcm512k", "rvv_tcm512k", "rvv_fp_tcm512k", "library", "subsystem_dma",
-            "subsystem_dma_tcm1m", "trap_address", "trap_address_tcm512k", "exit_status", "exit_status_tcm512k", "host_ram", "host_ram_tcm512k", "host_io", "host_io_tcm512k", "external_payload",
+            "subsystem_dma_tcm1m", "trap_address", "trap_address_tcm512k", "exit_status", "exit_status_tcm512k", "uninit_tcm", "uninit_tcm_tcm512k", "host_ram", "host_ram_tcm512k", "host_io", "host_io_tcm512k", "external_payload",
             "vme_external_matmul", *VME_TESTS, *RVV_MATMUL_TESTS)
 # Linker layouts shipped with the archives, taken from these fixtures.
 LINKER_LAYOUTS = {

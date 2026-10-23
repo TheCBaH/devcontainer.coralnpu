@@ -112,6 +112,11 @@ to check discarded scalar loads, access-fault reporting and trap recovery.
 Run `bin/core_mini_axi_sim --binary=examples/x0_load.elf --cycles=1000000`;
 success prints `CORAL_X0_LOAD_PASS`.
 
+RTL TCM bytes that no ELF segment loads start as zeros. Pass
+`+verilator+rand+reset+1` for ones, or `+verilator+rand+reset+2` with
+`+verilator+seed+N` for reproducible random contents (seed 0 or none picks
+a fresh one); `examples/uninit_tcm.elf` prints them.
+
 For MPACT batch jobs, pass `--max_instructions=N` to bound simulator
 instruction steps. The default, 0, is unlimited. Exhaustion returns 124;
 batch Ctrl-C returns 130. A guest halt on the last allowed instruction keeps
