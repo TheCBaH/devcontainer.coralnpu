@@ -13,6 +13,7 @@ on:
 permissions:
   contents: read
   packages: write
+  actions: write
 concurrency:
   group: build-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
@@ -40,15 +41,24 @@ jobs:
           password: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
       - name: Set command prefix
         run: echo 'EXEC=${{ steps.container.outputs.exec }}' >> "$GITHUB_ENV"
-      - name: Cache Bazel inputs and actions
-        id: bazel-cache
+      - name: Cache ID
+        id: cache-id
+        run: echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
+      - name: Restore Bazel repository cache
         uses: actions/cache/restore@v6
         with:
-          path: |
-            .cache/repos
-            .cache/actions
-          key: fixture-x86_64-${{ hashFiles('coralnpu/rules/repo_defs.bzl', '.devcontainer/**') }}
-          restore-keys: fixture-x86_64-
+          path: .cache/repos/content_addressable
+          key: downloads-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}
+          restore-keys: downloads-${{ runner.arch }}-
+      - name: Restore Bazel action cache
+        id: actions-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/actions
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
+          restore-keys: |
+            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
+            actions-${{ runner.arch }}-
       - name: Build guest fixtures
         run: $EXEC make fixtures
       - name: Test RTL retirement
@@ -61,14 +71,6 @@ jobs:
             fixtures/*.elf
             fixtures/*.ld
           if-no-files-found: error
-      - name: Save Bazel cache
-        if: always() && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: |
-            .cache/repos
-            .cache/actions
-          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}
   dma-tests:
     name: DMA and TileLink
     runs-on: ubuntu-24.04
@@ -91,16 +93,24 @@ jobs:
           cli-version: '0.88.0'
           username: ${{ github.event_name != 'pull_request' && github.actor || '' }}
           password: ${{ github.event_name != 'pull_request' && secrets.GITHUB_TOKEN || '' }}
-      - name: Cache Bazel inputs and actions
-        uses: actions/cache@v6
+      - name: Cache ID
+        id: cache-id
+        run: echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
+      - name: Restore Bazel repository cache
+        uses: actions/cache/restore@v6
         with:
-          path: |
-            .cache/repos
-            .cache/actions
-          key: dma-x86_64-${{ hashFiles('coralnpu/rules/repo_defs.bzl', '.devcontainer/**', 'patches/**', 'scripts/dma-tests.sh') }}
+          path: .cache/repos/content_addressable
+          key: downloads-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}
+          restore-keys: downloads-${{ runner.arch }}-
+      - name: Restore Bazel action cache
+        id: actions-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/actions
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
           restore-keys: |
-            dma-x86_64-
-            fixture-x86_64-
+            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
+            actions-${{ runner.arch }}-
       - name: Test DMA, TileLink and DDR paths
         run: ${{ steps.container.outputs.exec }} make dma-tests
       - name: Collect test logs
@@ -151,20 +161,23 @@ jobs:
           path: fixtures
       - name: Cache ID
         id: cache-id
-        run: |
-          echo "prefix=bazel-${{ runner.arch }}" >> "$GITHUB_OUTPUT"
-          echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
-      - name: Cache Bazel inputs and actions
-        id: bazel-cache
+        run: echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
+      - name: Restore Bazel repository cache
+        id: repos-cache
         uses: actions/cache/restore@v6
         with:
-          path: |
-            .cache/repos
-            .cache/actions
-          key: ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-${{ hashFiles('patches/**', 'mpact-patches/**', '.devcontainer/**', 'scripts/build.py') }}
+          path: .cache/repos/content_addressable
+          key: downloads-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}
+          restore-keys: downloads-${{ runner.arch }}-
+      - name: Restore Bazel action cache
+        id: actions-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/actions
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
           restore-keys: |
-            ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-
-            ${{ steps.cache-id.outputs.prefix }}-
+            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
+            actions-${{ runner.arch }}-
       - name: Build and package
         run: $EXEC make package
       - name: Test external archives
@@ -182,15 +195,29 @@ jobs:
           name: diagnostics-x86_64
           path: dist/*
           if-no-files-found: ignore
-      - name: Save Bazel cache
-        if: always() && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true'
+      - name: Save Bazel repository cache
+        id: repos-save
+        if: success() && github.event_name != 'pull_request' && steps.repos-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
-          path: |
-            .cache/repos
-            .cache/actions
-          # A failed build must not claim the stable key.
-          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}${{ job.status != 'success' && format('-partial-{0}', github.run_id) || '' }}
+          path: .cache/repos/content_addressable
+          key: ${{ steps.repos-cache.outputs.cache-primary-key }}
+      - name: Save Bazel action cache
+        id: actions-save
+        if: always() && github.event_name != 'pull_request' && steps.actions-cache.outputs.cache-primary-key != ''
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/actions
+          key: ${{ steps.actions-cache.outputs.cache-primary-key }}
+      - name: Prune superseded caches
+        if: always() && github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ '${{ steps.actions-save.outcome }}' = success ] && scripts/prune-cache.sh actions-${{ runner.arch }}-
+          [ '${{ steps.repos-save.outcome }}' = success ] && scripts/prune-cache.sh downloads-${{ runner.arch }}-
+          exit 0
       - name: Disk usage
         if: always()
         run: |
@@ -227,20 +254,23 @@ jobs:
           path: fixtures
       - name: Cache ID
         id: cache-id
-        run: |
-          echo "prefix=bazel-${{ runner.arch }}" >> "$GITHUB_OUTPUT"
-          echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
-      - name: Cache Bazel inputs and actions
-        id: bazel-cache
+        run: echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
+      - name: Restore Bazel repository cache
+        id: repos-cache
         uses: actions/cache/restore@v6
         with:
-          path: |
-            .cache/repos
-            .cache/actions
-          key: ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-${{ hashFiles('patches/**', 'mpact-patches/**', '.devcontainer/**', 'scripts/build.py') }}
+          path: .cache/repos/content_addressable
+          key: downloads-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}
+          restore-keys: downloads-${{ runner.arch }}-
+      - name: Restore Bazel action cache
+        id: actions-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/actions
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
           restore-keys: |
-            ${{ steps.cache-id.outputs.prefix }}-${{ steps.cache-id.outputs.coralnpu }}-
-            ${{ steps.cache-id.outputs.prefix }}-
+            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
+            actions-${{ runner.arch }}-
       - name: Build and package
         run: $EXEC make package
       - name: Test external archives
@@ -258,15 +288,29 @@ jobs:
           name: diagnostics-aarch64
           path: dist/*
           if-no-files-found: ignore
-      - name: Save Bazel cache
-        if: always() && steps.bazel-cache.outputs.cache-primary-key != '' && steps.bazel-cache.outputs.cache-hit != 'true'
+      - name: Save Bazel repository cache
+        id: repos-save
+        if: success() && github.event_name != 'pull_request' && steps.repos-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
-          path: |
-            .cache/repos
-            .cache/actions
-          # A failed build must not claim the stable key.
-          key: ${{ steps.bazel-cache.outputs.cache-primary-key }}${{ job.status != 'success' && format('-partial-{0}', github.run_id) || '' }}
+          path: .cache/repos/content_addressable
+          key: ${{ steps.repos-cache.outputs.cache-primary-key }}
+      - name: Save Bazel action cache
+        id: actions-save
+        if: always() && github.event_name != 'pull_request' && steps.actions-cache.outputs.cache-primary-key != ''
+        uses: actions/cache/save@v6
+        with:
+          path: .cache/actions
+          key: ${{ steps.actions-cache.outputs.cache-primary-key }}
+      - name: Prune superseded caches
+        if: always() && github.event_name != 'pull_request'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ '${{ steps.actions-save.outcome }}' = success ] && scripts/prune-cache.sh actions-${{ runner.arch }}-
+          [ '${{ steps.repos-save.outcome }}' = success ] && scripts/prune-cache.sh downloads-${{ runner.arch }}-
+          exit 0
       - name: Disk usage
         if: always()
         run: |
