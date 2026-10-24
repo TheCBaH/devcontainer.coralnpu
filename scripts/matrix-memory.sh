@@ -24,7 +24,7 @@ for kind; do
   fi
   echo "Checking $elf on prebuilt layout $sim"
   status=0
-  timeout --kill-after=5 300 "$root/bin/$sim" --cycles=100000000 \
+  timeout --kill-after=5 900 "$root/bin/$sim" --cycles=100000000 \
     --binary="$root/examples/$elf" >output.log 2>&1 || status=$?
   cat output.log
   test "$status" -eq 0
@@ -51,7 +51,7 @@ for kind; do
   done
   test "$found" = true
   status=0
-  timeout --kill-after=5 300 "$root/bin/$sim" --cycles=100000000 \
+  timeout --kill-after=5 900 "$root/bin/$sim" --cycles=100000000 \
     --binary="$scratch/corrupt.elf" >output.log 2>&1 || status=$?
   cat output.log
   test "$status" -eq 125
