@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          pattern: '*-*64'
+          pattern: 'archives-*'
           path: assets
       - name: Verify and assemble assets
         run: |
