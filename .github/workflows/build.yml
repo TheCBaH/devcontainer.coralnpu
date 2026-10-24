@@ -55,10 +55,10 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/actions
-          key: actions-fixtures-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
           restore-keys: |
-            actions-fixtures-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
-            actions-fixtures-${{ runner.arch }}-
+            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
+            actions-${{ runner.arch }}-
       - name: Build guest fixtures
         run: $EXEC make fixtures
       - name: Test RTL retirement
@@ -71,19 +71,6 @@ jobs:
             fixtures/*.elf
             fixtures/*.ld
           if-no-files-found: error
-      - name: Save Bazel action cache
-        id: actions-save
-        if: always() && steps.actions-cache.outputs.cache-primary-key != ''
-        uses: actions/cache/save@v6
-        with:
-          path: .cache/actions
-          key: ${{ steps.actions-cache.outputs.cache-primary-key }}
-      - name: Prune superseded action caches
-        if: always() && steps.actions-save.outcome == 'success' && github.event_name != 'pull_request'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: scripts/prune-cache.sh actions-fixtures-${{ runner.arch }}-
   dma-tests:
     name: DMA and TileLink
     runs-on: ubuntu-24.04
@@ -120,11 +107,10 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/actions
-          key: actions-dma-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
           restore-keys: |
-            actions-dma-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
-            actions-dma-${{ runner.arch }}-
-            actions-fixtures-${{ runner.arch }}-
+            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
+            actions-${{ runner.arch }}-
       - name: Test DMA, TileLink and DDR paths
         run: ${{ steps.container.outputs.exec }} make dma-tests
       - name: Collect test logs
@@ -145,19 +131,6 @@ jobs:
           path: .cache/dma-test-results/
           include-hidden-files: true
           if-no-files-found: error
-      - name: Save Bazel action cache
-        id: actions-save
-        if: always() && steps.actions-cache.outputs.cache-primary-key != ''
-        uses: actions/cache/save@v6
-        with:
-          path: .cache/actions
-          key: ${{ steps.actions-cache.outputs.cache-primary-key }}
-      - name: Prune superseded action caches
-        if: always() && steps.actions-save.outcome == 'success' && github.event_name != 'pull_request'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: scripts/prune-cache.sh actions-dma-${{ runner.arch }}-
   x86_64:
     needs: fixtures
     runs-on: ubuntu-24.04
@@ -201,10 +174,10 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/actions
-          key: actions-package-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
           restore-keys: |
-            actions-package-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
-            actions-package-${{ runner.arch }}-
+            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
+            actions-${{ runner.arch }}-
       - name: Build and package
         run: $EXEC make package
       - name: Test external archives
@@ -242,7 +215,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          [ '${{ steps.actions-save.outcome }}' = success ] && scripts/prune-cache.sh actions-package-${{ runner.arch }}-
+          [ '${{ steps.actions-save.outcome }}' = success ] && scripts/prune-cache.sh actions-${{ runner.arch }}-
           [ '${{ steps.repos-save.outcome }}' = success ] && scripts/prune-cache.sh repos-${{ runner.arch }}-
           exit 0
       - name: Disk usage
@@ -294,10 +267,10 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/actions
-          key: actions-package-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
           restore-keys: |
-            actions-package-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
-            actions-package-${{ runner.arch }}-
+            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
+            actions-${{ runner.arch }}-
       - name: Build and package
         run: $EXEC make package
       - name: Test external archives
@@ -335,7 +308,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          [ '${{ steps.actions-save.outcome }}' = success ] && scripts/prune-cache.sh actions-package-${{ runner.arch }}-
+          [ '${{ steps.actions-save.outcome }}' = success ] && scripts/prune-cache.sh actions-${{ runner.arch }}-
           [ '${{ steps.repos-save.outcome }}' = success ] && scripts/prune-cache.sh repos-${{ runner.arch }}-
           exit 0
       - name: Disk usage
