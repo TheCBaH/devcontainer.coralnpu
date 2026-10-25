@@ -1,0 +1,54 @@
+name: trace
+on:
+  push:
+    branches: [main, devel, 'trace-*']
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+  actions: write
+concurrency:
+  group: trace-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: true
+jobs:
+  selection:
+    name: Trace selection
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Initialize source
+        run: make submodule
+      - name: Free runner disk
+        run: |
+          sudo find /usr/local/lib/android /usr/share/dotnet /opt/ghc -depth -delete 2>/dev/null || true
+          df -h
+      - name: Development container
+        id: container
+        uses: TheCBaH/devcontainer-action/devcontainer@v1
+        with:
+          cli-version: '0.88.0'
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Cache ID
+        id: cache-id
+        run: echo "coralnpu=$(git rev-parse --short=12 HEAD:coralnpu)" >> "$GITHUB_OUTPUT"
+      - name: Restore Bazel repository cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/repos/content_addressable
+          key: downloads-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}
+          restore-keys: downloads-${{ runner.arch }}-
+      - name: Restore Bazel action cache
+        uses: actions/cache/restore@v6
+        with:
+          path: .cache/actions
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
+          restore-keys: |
+            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
+            actions-${{ runner.arch }}-
+      - name: Test trace selection
+        run: ${{ steps.container.outputs.exec }} make trace-tests

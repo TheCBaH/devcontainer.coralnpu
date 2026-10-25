@@ -134,6 +134,28 @@ The RTL simulators generate FST waveforms with `--trace`, or with
 `--trace_file=path.fst` to choose an output path. See the example guide for
 waveform commands.
 
+The RTL simulators can record only chosen signals. `--trace_select=MANIFEST`
+(with `--trace` or `--trace_file`) records the variables whose declaration
+names are listed in the manifest, matched exactly (the names of the scopes and
+of the variable, joined by single spaces, so a dot in a scope name stays part
+of it), and fails before the run if a name matches no declaration. The
+manifest is the text file `coralview plan` writes:
+
+```text
+hwfrp-verilator-select 1
+producer core_mini_axi_sim fst
+select VCoreMiniAxi.core CoreMiniAxi io_aclk
+```
+
+`--trace_catalog=path.fst` writes the declarations of every traceable signal,
+with no values, and exits without running (`--binary` is not needed).
+`catalogs/` in the emulator archive holds one per RTL simulator. Selection is
+implemented by wrapper patch 0027, which adds an exact-name entry point to
+Verilator's trace runtime and fixes two defects of its enable mask (a vector
+read past its end for sparse selections, and SystemVerilog events that bypass
+the mask); `make trace-tests` checks it on the runtime, under libstdc++ debug
+containers.
+
 ## Development
 
 Open `.devcontainer/devcontainer.json` in VS Code or Codespaces. When

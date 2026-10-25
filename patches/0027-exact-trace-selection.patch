@@ -1,0 +1,826 @@
+diff --git a/.bazelrc b/.bazelrc
+index 538bec8..4a3134d 100644
+--- a/.bazelrc
++++ b/.bazelrc
+@@ -167,3 +167,7 @@ build --strategy=SpyGlassLint=local
+ 
+ # Import user config, if it exists (gitignored).
+ try-import %workspace%/.bazelrc.user
++
++# Compile the Verilator runtime, generated models and tests with libstdc++ debug containers, which
++# bounds-check vector<bool>; _GLIBCXX_ASSERTIONS does not.
++build:glibcxx-debug --copt=-D_GLIBCXX_DEBUG
+diff --git a/rules/repos.bzl b/rules/repos.bzl
+index c8a86df..1c94ded 100644
+--- a/rules/repos.bzl
++++ b/rules/repos.bzl
+@@ -47,6 +47,7 @@ def verilator_repos():
+         patch_args = ["-p1"],
+         patches = [
+             "@coralnpu_hw//third_party/verilator:0001-Remove-autodetect-of-VERILATOR_ROOT.patch",
++            "@coralnpu_hw//third_party/verilator:0003-exact-trace-selection.patch",
+         ],
+     )
+ 
+diff --git a/tests/trace_selection/BUILD b/tests/trace_selection/BUILD
+new file mode 100644
+index 0000000..57b495f
+--- /dev/null
++++ b/tests/trace_selection/BUILD
+@@ -0,0 +1,22 @@
++# Copyright 2026 Google LLC
++#
++# Licensed under the Apache License, Version 2.0 (the "License");
++# you may not use this file except in compliance with the License.
++# You may obtain a copy of the License at
++#
++#     http://www.apache.org/licenses/LICENSE-2.0
++#
++# Unless required by applicable law or agreed to in writing, software
++# distributed under the License is distributed on an "AS IS" BASIS,
++# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++# See the License for the specific language governing permissions and
++# limitations under the License.
++
++# Run with --config=glibcxx-debug: the runtime and the test are then built with bounds-checked
++# vector<bool>, which the sparse selection case relies on.
++cc_test(
++    name = "trace_selection_test",
++    srcs = ["trace_selection_test.cc"],
++    size = "small",
++    deps = ["@verilator//:libverilator"],
++)
+diff --git a/tests/trace_selection/trace_selection_test.cc b/tests/trace_selection/trace_selection_test.cc
+new file mode 100644
+index 0000000..99c6119
+--- /dev/null
++++ b/tests/trace_selection/trace_selection_test.cc
+@@ -0,0 +1,249 @@
++// Exact-name trace selection (Verilator patch 0003), exercised on the real trace runtime the way
++// generated code drives it: declarations in an init callback, values in full and change callbacks.
++// The VCD output is read back and compared with the full trace; for FST the checks are that the
++// runtime accepts the selection and that unmatched names are reported. Built with
++// --config=glibcxx-debug, so an out-of-range enable-mask read aborts.
++#include <sys/stat.h>
++
++#include <cstdint>
++#include <cstdio>
++#include <cstdlib>
++#include <fstream>
++#include <map>
++#include <sstream>
++#include <string>
++#include <tuple>
++#include <vector>
++
++#include "verilated_fst_c.h"  // NOLINT(build/include_subdir): From verilator.
++#include "verilated_vcd_c.h"  // NOLINT(build/include_subdir): From verilator.
++
++namespace {
++
++// Signals s0..s(n-1) at codes 1..n, and an event at code n + 1, in scopes "top" / "core.x".
++struct Model {
++  VlEvent event;
++  int signals = 0;
++  int step = 0;
++};
++
++int Value(const Model* m, int i) { return ((m->step >> (i % 7)) ^ i) & 1; }
++
++void DeclBit(VerilatedVcd* t, uint32_t code, const char* name) { t->declBit(code, name); }
++void DeclBit(VerilatedFst* t, uint32_t code, const char* name) {
++  t->declBit(code, name, -1, VerilatedTraceSigDirection::NONE, VerilatedTraceSigKind::WIRE,
++             VerilatedTraceSigType::LOGIC);
++}
++void DeclEvent(VerilatedVcd* t, uint32_t code, const char* name) { t->declEvent(code, name); }
++void DeclEvent(VerilatedFst* t, uint32_t code, const char* name) {
++  t->declEvent(code, name, -1, VerilatedTraceSigDirection::NONE, VerilatedTraceSigKind::WIRE,
++               VerilatedTraceSigType::EVENT);
++}
++
++template <typename Trace>
++void InitCb(void* userp, Trace* tracep, uint32_t) {
++  auto* m = static_cast<Model*>(userp);
++  static std::vector<std::string> names;
++  names.clear();
++  for (int i = 0; i < m->signals; ++i) names.push_back("s" + std::to_string(i));
++  tracep->pushPrefix("top", VerilatedTracePrefixType::SCOPE_MODULE);
++  tracep->pushPrefix("core.x", VerilatedTracePrefixType::SCOPE_MODULE);
++  for (int i = 0; i < m->signals; ++i) DeclBit(tracep, 1 + i, names[i].c_str());
++  DeclEvent(tracep, 1 + m->signals, "ev");
++  tracep->popPrefix();
++  tracep->popPrefix();
++}
++
++template <typename Trace>
++void FullCb(void* userp, typename Trace::Buffer* bufp) {
++  auto* m = static_cast<Model*>(userp);
++  for (int i = 0; i < m->signals; ++i) bufp->fullBit(bufp->oldp(1 + i), Value(m, i));
++  bufp->fullEvent(bufp->oldp(1 + m->signals), &m->event);
++}
++
++// Both event emitters of generated code: a triggered event by pointer, and the unconditional one.
++template <typename Trace>
++void ChgCb(void* userp, typename Trace::Buffer* bufp) {
++  auto* m = static_cast<Model*>(userp);
++  for (int i = 0; i < m->signals; ++i) bufp->chgBit(bufp->oldp(1 + i), Value(m, i));
++  if (m->step % 3 == 0) bufp->chgEventTriggered(bufp->oldp(1 + m->signals));
++  if (m->step % 3 == 1) {
++    m->event.fire();
++    bufp->chgEvent(bufp->oldp(1 + m->signals), &m->event);
++    m->event.clearTriggered();
++  }
++}
++
++enum class Mode { kTrace, kCatalog };
++
++// Writes a trace of [signals] bits and the event over [steps] time steps with the given selection.
++// Returns the names the open did not declare.
++template <typename Tfp, typename Trace>
++std::vector<std::string> Write(const std::string& path, int signals, int steps,
++                               const std::vector<std::string>& select, Mode mode = Mode::kTrace) {
++  Model model;
++  model.signals = signals;
++  Tfp tfp;
++  tfp.spTrace()->addInitCb(&InitCb<Trace>, &model, "top", false, signals + 1);
++  tfp.spTrace()->addFullCb(&FullCb<Trace>, 0, &model);
++  tfp.spTrace()->addChgCb(&ChgCb<Trace>, 0, &model);
++  tfp.modelConnected(true);
++  for (const auto& name : select) tfp.dumpvarsExact(name);
++  tfp.open(path.c_str());
++  auto unmatched = tfp.dumpvarsUnmatched();
++  if (unmatched.empty() && mode == Mode::kTrace) {
++    for (model.step = 0; model.step < steps; ++model.step) tfp.dump(model.step);
++  }
++  tfp.close();
++  return unmatched;
++}
++
++std::vector<std::string> WriteVcd(const std::string& path, int signals, int steps,
++                                  const std::vector<std::string>& select,
++                                  Mode mode = Mode::kTrace) {
++  return Write<VerilatedVcdC, VerilatedVcd>(path, signals, steps, select, mode);
++}
++
++std::vector<std::string> WriteFst(const std::string& path, int signals, int steps,
++                                  const std::vector<std::string>& select,
++                                  Mode mode = Mode::kTrace) {
++  return Write<VerilatedFstC, VerilatedFst>(path, signals, steps, select, mode);
++}
++
++struct Vcd {
++  std::vector<std::string> declared;  // Native names, in declaration order.
++  // (time, native name, value line) for each change after $enddefinitions.
++  std::vector<std::tuple<uint64_t, std::string, std::string>> changes;
++  bool complete = false;  // $enddefinitions seen.
++};
++
++Vcd Read(const std::string& path) {
++  Vcd vcd;
++  std::ifstream in(path);
++  std::map<std::string, std::string> names;  // id -> native name
++  std::vector<std::string> scopes;
++  std::string line;
++  uint64_t time = 0;
++  while (std::getline(in, line)) {
++    std::istringstream words(line);
++    std::string first;
++    if (!(words >> first)) continue;
++    if (!vcd.complete) {
++      if (first == "$scope") {
++        std::string kind, name;
++        words >> kind >> name;
++        scopes.push_back(name);
++      } else if (first == "$upscope") {
++        scopes.pop_back();
++      } else if (first == "$var") {
++        std::string type, size, id, name;
++        words >> type >> size >> id >> name;
++        std::string native;
++        for (const auto& s : scopes) native += s + " ";
++        native += name;
++        names[id] = native;
++        vcd.declared.push_back(native);
++      } else if (first == "$enddefinitions") {
++        vcd.complete = true;
++      }
++      continue;
++    }
++    if (first[0] == '#') {
++      time = std::stoull(first.substr(1));
++    } else {
++      const std::string id = first.substr(1);
++      const auto it = names.find(id);
++      vcd.changes.emplace_back(time, it == names.end() ? "?" + id : it->second, first.substr(0, 1));
++    }
++  }
++  return vcd;
++}
++
++long Size(const std::string& path) {
++  struct stat st;
++  return stat(path.c_str(), &st) == 0 ? static_cast<long>(st.st_size) : -1;
++}
++
++int failures = 0;
++
++void Check(bool ok, const std::string& what) {
++  std::printf("%s: %s\n", ok ? "ok  " : "FAIL", what.c_str());
++  if (!ok) ++failures;
++}
++
++bool Selected(const std::vector<std::string>& select, const std::string& name) {
++  for (const auto& s : select) {
++    if (s == name) return true;
++  }
++  return false;
++}
++
++// The selected VCD declares exactly [select], and its changes are those of the full VCD for
++// those names, in order.
++void CheckVcdSelection(const std::string& what, const std::string& dir, int signals, int steps,
++                       const std::vector<std::string>& select) {
++  const std::string full_path = dir + "/full.vcd", sel_path = dir + "/selected.vcd";
++  Check(WriteVcd(full_path, signals, steps, {}).empty(), what + ": full trace written");
++  Check(WriteVcd(sel_path, signals, steps, select).empty(), what + ": selection matched");
++  const Vcd full = Read(full_path), sel = Read(sel_path);
++  Check(sel.complete, what + ": header complete");
++  std::vector<std::string> want;
++  for (const auto& d : full.declared) {
++    if (Selected(select, d)) want.push_back(d);
++  }
++  Check(sel.declared == want, what + ": declares exactly the selection (" +
++                                  std::to_string(sel.declared.size()) + " of " +
++                                  std::to_string(full.declared.size()) + ")");
++  std::vector<std::tuple<uint64_t, std::string, std::string>> expected;
++  for (const auto& c : full.changes) {
++    if (Selected(select, std::get<1>(c))) expected.push_back(c);
++  }
++  Check(sel.changes == expected, what + ": changes are those of the full trace (" +
++                                     std::to_string(sel.changes.size()) + ")");
++  Check(!expected.empty(), what + ": the selection changes at least once");
++}
++
++}  // namespace
++
++extern "C" int sc_main(int, char**) {
++  const char* tmp = std::getenv("TEST_TMPDIR");
++  const std::string dir = tmp != nullptr ? tmp : "/tmp";
++
++  CheckVcdSelection("VCD bits and event", dir, 20, 12, {"top core.x s3", "top core.x s4", "top core.x ev"});
++  // The event is triggered at steps the selection does not cover: no record may reach the writer.
++  CheckVcdSelection("VCD event unselected", dir, 20, 12, {"top core.x s4", "top core.x s5"});
++  CheckVcdSelection("VCD dotted scope, not a prefix", dir, 20, 12, {"top core.x s1"});
++  // The last selected code is far below the last declared one: the mask must be sized for all.
++  CheckVcdSelection("VCD sparse", dir, 5000, 8, {"top core.x s0"});
++
++  const std::vector<std::string> missing = {"top core.x s1", "top core.x nope", "top core x s2"};
++  const auto vcd_missing = WriteVcd(dir + "/m.vcd", 20, 4, missing);
++  Check(vcd_missing.size() == 2, "VCD unmatched names are reported");
++  const auto fst_missing = WriteFst(dir + "/m.fst", 20, 4, missing);
++  Check(fst_missing.size() == 2, "FST unmatched names are reported");
++
++  // A prefix is not a selection: dumpvars would also take what is under "top core.x".
++  const auto prefix = WriteVcd(dir + "/p.vcd", 20, 4, {"top core.x"});
++  Check(prefix.size() == 1, "VCD a scope name selects nothing");
++
++  // Catalog: open and close, no dump.
++  Check(WriteVcd(dir + "/c.vcd", 20, 4, {}, Mode::kCatalog).empty(), "VCD catalog written");
++  const Vcd catalog = Read(dir + "/c.vcd");
++  Check(catalog.complete && catalog.declared.size() == 21 && catalog.changes.empty(),
++        "VCD catalog declares everything and has no changes");
++  Check(WriteFst(dir + "/c.fst", 20, 4, {}, Mode::kCatalog).empty(), "FST catalog written");
++  Check(Size(dir + "/c.fst") > 0, "FST catalog is not empty");
++
++  // FST: the runtime takes the same selections, in debug mode, and writes less.
++  Check(WriteFst(dir + "/full.fst", 200, 12, {}).empty(), "FST full trace written");
++  Check(WriteFst(dir + "/selected.fst", 200, 12, {"top core.x s3", "top core.x ev"}).empty(),
++        "FST selection with the event matched");
++  Check(WriteFst(dir + "/noevent.fst", 200, 12, {"top core.x s3"}).empty(),
++        "FST selection without the event matched");
++  Check(WriteFst(dir + "/sparse.fst", 5000, 8, {"top core.x s0"}).empty(), "FST sparse selection");
++  Check(Size(dir + "/selected.fst") > 0 && Size(dir + "/selected.fst") < Size(dir + "/full.fst"),
++        "FST selected trace is smaller than the full trace");
++
++  std::printf("%d failures\n", failures);
++  return failures == 0 ? 0 : 1;
++}
+diff --git a/tests/verilator_sim/BUILD b/tests/verilator_sim/BUILD
+index 35d41be..6815781 100644
+--- a/tests/verilator_sim/BUILD
++++ b/tests/verilator_sim/BUILD
+@@ -317,4 +317,15 @@ cc_test(
+     ],
+ )
+ 
++cc_test(
++    name = "sysc_tb_trace_test",
++    srcs = ["sysc_tb_trace_test.cc"],
++    size = "small",
++    deps = [
++        ":sim_libs",
++        "@accellera_systemc//:systemc",
++        "@verilator//:libverilator",
++    ],
++)
++
+ collect_coralnpu_elfs()
+diff --git a/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc b/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
+index 349fa60..1d8fb96 100644
+--- a/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
++++ b/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
+@@ -19,6 +19,7 @@
+ #include <optional>
+ #include <string>
+ #include <iostream>
++#include <vector>
+ 
+ #include "absl/flags/flag.h"
+ #include "absl/flags/parse.h"
+@@ -36,6 +37,12 @@
+ ABSL_FLAG(int, cycles, 100000000, "Simulation cycles");
+ ABSL_FLAG(bool, trace, false, "Dump FST trace");
+ ABSL_FLAG(std::string, trace_file, "", "Output path for FST trace file (enables tracing if set)");
++ABSL_FLAG(std::string, trace_catalog, "",
++          "Write an FST of every traceable signal declaration, with no values, to this path and "
++          "exit without running; --binary is not needed");
++ABSL_FLAG(std::string, trace_select, "",
++          "Trace only the signals this selection manifest names (with --trace or --trace_file); "
++          "a name that matches no declaration is an error");
+ ABSL_FLAG(std::string, binary, "", "Binary to execute");
+ ABSL_FLAG(bool, debug_axi, false, "Enable AXI traffic debugging");
+ ABSL_FLAG(bool, instr_trace, false, "Log instructions to console");
+@@ -43,6 +50,7 @@ ABSL_FLAG(bool, backdoor_load, false, "Enable high-speed backdoor code loading")
+ 
+ static int run(const char* name, const std::string binary, const int cycles,
+                 const bool trace, const std::string& trace_file,
++                const std::string& trace_catalog, const std::string& trace_select,
+                 const bool debug_axi, const bool instr_trace,
+                 const bool backdoor_load) {
+   CoreMiniAxi_tb tb(CoreMiniAxi_tb::kCoreMiniAxiModelName, cycles, /* random= */ false, debug_axi,
+@@ -54,8 +62,16 @@ static int run(const char* name, const std::string binary, const int cycles,
+   // DUT model.
+   sc_start(SC_ZERO_TIME);
+ 
++  if (!trace_catalog.empty()) {
++    return tb.trace(tb.core(), trace_catalog.c_str(), {}, /*catalog=*/true) ? 0 : 126;
++  }
+   if (trace || !trace_file.empty()) {
+-    tb.trace(tb.core(), trace_file.c_str());
++    std::vector<std::string> select;
++    if (!trace_select.empty() && !Sysc_tb::ReadTraceSelection(trace_select, &select)) return 126;
++    if (!tb.trace(tb.core(), trace_file.c_str(), select)) return 126;
++  } else if (!trace_select.empty()) {
++    LOG(ERROR) << "--trace_select needs --trace or --trace_file";
++    return 126;
+   }
+ 
+   auto load_status = tb.LoadElfAsync(binary);
+@@ -83,7 +99,7 @@ extern "C" int sc_main(int argc, char** argv) {
+   char** v_argv = &args[0];
+   Verilated::commandArgs(v_argc, v_argv);
+ 
+-  if (absl::GetFlag(FLAGS_binary) == "") {
++  if (absl::GetFlag(FLAGS_binary) == "" && absl::GetFlag(FLAGS_trace_catalog).empty()) {
+     LOG(ERROR) << "--binary is required!";
+     return 126;
+   }
+@@ -92,6 +108,7 @@ extern "C" int sc_main(int argc, char** argv) {
+     return run(Sysc_tb::get_name(argv[0]), absl::GetFlag(FLAGS_binary),
+         absl::GetFlag(FLAGS_cycles), absl::GetFlag(FLAGS_trace),
+         absl::GetFlag(FLAGS_trace_file),
++        absl::GetFlag(FLAGS_trace_catalog), absl::GetFlag(FLAGS_trace_select),
+         absl::GetFlag(FLAGS_debug_axi), absl::GetFlag(FLAGS_instr_trace),
+         absl::GetFlag(FLAGS_backdoor_load));
+   } catch (const sc_core::sc_report& report) {
+diff --git a/tests/verilator_sim/sysc_tb.h b/tests/verilator_sim/sysc_tb.h
+index d263bf6..eaa5f34 100644
+--- a/tests/verilator_sim/sysc_tb.h
++++ b/tests/verilator_sim/sysc_tb.h
+@@ -18,8 +18,11 @@
+ // A SystemC baseclass for constrained random testing of Verilated RTL.
+ #include <systemc.h>
+ 
++#include <cstdio>
++#include <fstream>
+ #include <iostream>
+ #include <string>
++#include <vector>
+ 
+ #include "tests/verilator_sim/fifo.h"
+ // sc_core needs to be included before verilator header
+@@ -167,8 +170,38 @@ struct Sysc_tb : public sc_module {
+     }
+   }
+ 
++  // Reads a selection manifest (`hwfrp-verilator-select 1`): the exact declaration names to trace,
++  // one `select` line each, everything after the first space. Returns false and says why on stderr
++  // if the file is unreadable, of another version or empty.
++  static bool ReadTraceSelection(const std::string &path, std::vector<std::string> *names) {
++    std::ifstream in(path);
++    std::string line;
++    if (!in || !std::getline(in, line) || line != "hwfrp-verilator-select 1") {
++      fprintf(stderr, "trace_select: %s: not a version 1 manifest\n", path.c_str());
++      return false;
++    }
++    while (std::getline(in, line)) {
++      if (line.rfind("producer ", 0) == 0) continue;
++      if (line.rfind("select ", 0) != 0) {
++        fprintf(stderr, "trace_select: %s: unknown line \"%s\"\n", path.c_str(), line.c_str());
++        return false;
++      }
++      names->push_back(line.substr(7));
++    }
++    if (names->empty()) {
++      fprintf(stderr, "trace_select: %s: empty selection\n", path.c_str());
++      return false;
++    }
++    return true;
++  }
++
++  // Opens the trace at [path] for [design] and, if [select] is not empty, records only the
++  // variables with those exact declaration names; a name that no declaration has is an error.
++  // Returns false (with the trace closed) on an error. With [catalog], closes the trace at once:
++  // the file declares every signal and holds no values.
+   template <typename T>
+-  void trace(T* design, const char *name = "") {
++  bool trace(T* design, const char *name = "", const std::vector<std::string> &select = {},
++             bool catalog = false) {
+     std::string path;
+     if (name != nullptr && strlen(name) > 0) {
+       path = name;
+@@ -189,9 +222,27 @@ struct Sysc_tb : public sc_module {
+ 
+     design->trace(tf_, 99);
+     Verilated::traceEverOn(true);
++    for (const auto &selected : select) tf_->dumpvarsExact(selected);
+     tf_->open(path.c_str());
++    const std::vector<std::string> unmatched = tf_->dumpvarsUnmatched();
++    if (!unmatched.empty()) {
++      for (const auto &missing : unmatched) {
++        fprintf(stderr, "trace_select: no declaration named \"%s\"\n", missing.c_str());
++      }
++      tf_->close();
++      delete tf_;
++      tf_ = nullptr;
++      std::remove(path.c_str());
++      return false;
++    }
+     printf("\nInfo: default timescale unit used for tracing: 1 ps (%s)\n",
+            path.c_str());
++    if (catalog) {
++      tf_->close();
++      delete tf_;
++      tf_ = nullptr;
++    }
++    return true;
+   }
+ 
+   static char *get_name(char *s) {
+diff --git a/tests/verilator_sim/sysc_tb_trace_test.cc b/tests/verilator_sim/sysc_tb_trace_test.cc
+new file mode 100644
+index 0000000..27c801b
+--- /dev/null
++++ b/tests/verilator_sim/sysc_tb_trace_test.cc
+@@ -0,0 +1,137 @@
++// Copyright 2026 Google LLC
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++// Sysc_tb::trace with a selection, and as a catalog, on a stand-in for a Verilated design: the
++// manifest reader, the fatal unmatched name, and the files each mode leaves.
++#include <sys/stat.h>
++
++#include <cstdio>
++#include <cstdlib>
++#include <fstream>
++#include <memory>
++#include <string>
++#include <vector>
++
++#include "tests/verilator_sim/sysc_tb.h"
++
++namespace {
++
++constexpr int kSignals = 300;
++
++// A design that declares kSignals one-bit signals under the scopes "VFake.core" and "Fake", the way
++// a Verilated model's trace callbacks do.
++struct Design {
++  const char *name() const { return "fake"; }
++
++  void trace(VerilatedFstC *tfp, int) {
++    tfp->spTrace()->addInitCb(&Init, this, "VFake", false, kSignals);
++    tfp->spTrace()->addFullCb(&Full, 0, this);
++    tfp->spTrace()->addChgCb(&Full, 0, this);
++    tfp->modelConnected(true);
++  }
++
++  static void Init(void *, VerilatedFst *tracep, uint32_t) {
++    static std::vector<std::string> names;
++    names.clear();
++    for (int i = 0; i < kSignals; ++i) names.push_back("s" + std::to_string(i));
++    tracep->pushPrefix("VFake.core", VerilatedTracePrefixType::SCOPE_MODULE);
++    tracep->pushPrefix("Fake", VerilatedTracePrefixType::SCOPE_MODULE);
++    for (int i = 0; i < kSignals; ++i) {
++      tracep->declBit(1 + i, names[i].c_str(), -1, VerilatedTraceSigDirection::NONE,
++                      VerilatedTraceSigKind::WIRE, VerilatedTraceSigType::LOGIC);
++    }
++    tracep->popPrefix();
++    tracep->popPrefix();
++  }
++
++  static void Full(void *userp, VerilatedFst::Buffer *bufp) {
++    for (int i = 0; i < kSignals; ++i) bufp->fullBit(bufp->oldp(1 + i), i & 1);
++  }
++};
++
++struct Tb : public Sysc_tb {
++  explicit Tb(sc_module_name name) : Sysc_tb(name, /*loops=*/1, /*random=*/false) {}
++};
++
++int failures = 0;
++
++void Check(bool ok, const std::string &what) {
++  printf("%s: %s\n", ok ? "ok  " : "FAIL", what.c_str());
++  if (!ok) ++failures;
++}
++
++long Size(const std::string &path) {
++  struct stat st;
++  return stat(path.c_str(), &st) == 0 ? static_cast<long>(st.st_size) : -1;
++}
++
++void Write(const std::string &path, const std::string &text) {
++  std::ofstream(path) << text;
++}
++
++}  // namespace
++
++int sc_main(int, char **) {
++  const char *tmp = std::getenv("TEST_TMPDIR");
++  const std::string dir = tmp != nullptr ? tmp : "/tmp";
++  Design design;
++  // SystemC takes no new modules once the simulation has started, so make a testbench for each
++  // trace first. A testbench closes its trace when it goes away.
++  std::vector<std::unique_ptr<Tb>> tbs;
++  for (int i = 0; i < 6; ++i) tbs.push_back(std::make_unique<Tb>(("tb" + std::to_string(i)).c_str()));
++  auto trace = [&](int tb, const std::string &path, const std::vector<std::string> &select,
++                   bool catalog = false) {
++    return tbs[tb]->trace(&design, path.c_str(), select, catalog);
++  };
++
++  std::vector<std::string> names;
++  Write(dir + "/ok.select",
++        "hwfrp-verilator-select 1\nproducer sim fst\nselect VFake.core Fake s3\n"
++        "select VFake.core Fake s4\n");
++  Check(Sysc_tb::ReadTraceSelection(dir + "/ok.select", &names) && names.size() == 2 &&
++            names[0] == "VFake.core Fake s3" && names[1] == "VFake.core Fake s4",
++        "a manifest is read, names with dots and spaces whole");
++  const char *bad[][2] = {{"version", "hwfrp-verilator-select 2\nselect a b\n"},
++                          {"empty", "hwfrp-verilator-select 1\nproducer sim fst\n"},
++                          {"line", "hwfrp-verilator-select 1\nselects a b\n"},
++                          {"header", "select a b\n"}};
++  for (const auto &item : bad) {
++    names.clear();
++    Write(dir + "/bad.select", item[1]);
++    Check(!Sysc_tb::ReadTraceSelection(dir + "/bad.select", &names),
++          std::string("rejected: ") + item[0]);
++  }
++  names.clear();
++  Check(!Sysc_tb::ReadTraceSelection(dir + "/missing.select", &names), "rejected: no file");
++
++  const std::string all = dir + "/all.fst", some = dir + "/some.fst", none = dir + "/none.fst";
++  const std::string catalog = dir + "/catalog.fst", suffix = dir + "/suffix";
++  Check(trace(0, all, {}), "a full trace opens");
++  Check(trace(1, some, {"VFake.core Fake s3", "VFake.core Fake s250"}), "a selection opens");
++  Check(!trace(2, none, {"VFake.core Fake s3", "VFake.core Fake nope"}), "an unmatched name fails");
++  Check(Size(none) < 0, "and leaves no file");
++  Check(!trace(3, none, {"VFake core Fake s3"}), "the dot of a scope name is not a separator");
++  Check(Size(none) < 0, "and leaves no file either");
++  Check(trace(4, catalog, {}, /*catalog=*/true), "a catalog opens");
++  Check(Size(catalog) > 0, "and is written at once");
++  Check(trace(5, suffix, {}), "a path without .fst is accepted");
++
++  tbs.clear();
++  Check(Size(all) > 0 && Size(some) > 0 && Size(some) < Size(all), "the selected file is smaller");
++  Check(Size(catalog) > 0, "the catalog survives the testbench");
++  Check(Size(suffix + ".fst") > 0, "a path without .fst gets the suffix");
++
++  printf("%d failures\n", failures);
++  return failures == 0 ? 0 : 1;
++}
+diff --git a/third_party/verilator/0003-exact-trace-selection.patch b/third_party/verilator/0003-exact-trace-selection.patch
+new file mode 100644
+index 0000000..efc9164
+--- /dev/null
++++ b/third_party/verilator/0003-exact-trace-selection.patch
+@@ -0,0 +1,198 @@
++diff --git a/include/verilated_fst_c.h b/include/verilated_fst_c.h
++index de1b0ee..39d829c 100644
++--- a/include/verilated_fst_c.h
+++++ b/include/verilated_fst_c.h
++@@ -296,12 +296,19 @@ public:
++     }
++     // Set variables to dump, using $dumpvars format
++     // If level = 0, dump everything and hier is then ignored
++     void dumpvars(int level, const std::string& hier) VL_MT_SAFE {
++         m_sptrace.dumpvars(level, hier);
++     }
+++    // Also dump the variable with this exact declaration name (scope names and its own, joined
+++    // by single spaces)
+++    void dumpvarsExact(const std::string& name) VL_MT_SAFE { m_sptrace.dumpvarsExact(name); }
+++    // The dumpvarsExact() names the last open did not declare
+++    std::vector<std::string> dumpvarsUnmatched() const VL_MT_SAFE {
+++        return m_sptrace.dumpvarsUnmatched();
+++    }
++ 
++     // Internal class access
++     VerilatedFst* spTrace() { return &m_sptrace; }
++ };
++ 
++ #endif  // guard
++diff --git a/include/verilated_trace.h b/include/verilated_trace.h
++index de8f899..72577bf 100644
++--- a/include/verilated_trace.h
+++++ b/include/verilated_trace.h
++@@ -30,12 +30,13 @@
++ #include <condition_variable>
++ #include <memory>
++ #include <string>
++ #include <type_traits>
++ #include <map>
++ #include <set>
+++#include <unordered_map>
++ #include <vector>
++ 
++ #include <deque>
++ #include <thread>
++ 
++ // clang-format on
++@@ -221,12 +222,14 @@ private:
++     uint32_t m_numSignals = 0;  // Number of distinct signals
++     uint32_t m_maxBits = 0;  // Number of bits in the widest signal
++     void* m_initUserp = nullptr;  // The callback userp of the instance currently being initialized
++     bool m_rootInit = true;  // Whether the current init callback was reached from the root
++     // TODO: Should keep this as a Trie, that is how it's accessed all the time.
++     std::vector<std::pair<int, std::string>> m_dumpvars;  // dumpvar() entries
+++    // dumpvarsExact() entries: exact declaration name, and whether this open declared it
+++    std::unordered_map<std::string, bool> m_exactvars;
++     double m_timeRes = 1e-9;  // Time resolution (ns/ms etc)
++     double m_timeUnit = 1e-0;  // Time units (ns/ms etc)
++     uint64_t m_timeLastDump = 0;  // Last time we did a dump
++     bool m_didSomeDump = false;  // Did at least one dump (i.e.: m_timeLastDump is valid)
++     VerilatedContext* m_contextp = nullptr;  // The context used by the traced models
++     std::set<const VerilatedModel*> m_models;  // The collection of models being traced
++@@ -315,12 +318,24 @@ public:
++     // Set time resolution (s/ms, defaults to ns)
++     void set_time_resolution(const char* unitp) VL_MT_SAFE;
++     void set_time_resolution(const std::string& unit) VL_MT_SAFE;
++     // Set variables to dump, using $dumpvars format
++     // If level = 0, dump everything and hier is then ignored
++     void dumpvars(int level, const std::string& hier) VL_MT_SAFE;
+++    // Also dump the variable with this exact declaration name: the names of its scopes and
+++    // its own joined by single spaces, with no prefix or level matching. Names with dots stay
+++    // whole. Selects only what dumpvars() does not (see dumpvarsUnmatched).
+++    void dumpvarsExact(const std::string& name) VL_MT_SAFE { m_exactvars.emplace(name, false); }
+++    // The dumpvarsExact() names that no declaration of the last open matched; call after open
+++    std::vector<std::string> dumpvarsUnmatched() const VL_MT_SAFE {
+++        std::vector<std::string> names;
+++        for (const auto& item : m_exactvars) {
+++            if (!item.second) names.push_back(item.first);
+++        }
+++        return names;
+++    }
++ 
++     // Call
++     void dump(uint64_t timeui) VL_MT_SAFE_EXCLUDES(m_mutex);
++ 
++     //=========================================================================
++     // Internal interface to Verilator generated code
++diff --git a/include/verilated_trace_imp.h b/include/verilated_trace_imp.h
++index e2d740d..afcfe3a 100644
++--- a/include/verilated_trace_imp.h
+++++ b/include/verilated_trace_imp.h
++@@ -123,12 +123,13 @@ void VerilatedTrace<VL_SUB_T, VL_BUF_T>::traceInit() VL_MT_UNSAFE {
++     // of codes on re-open
++     const uint32_t expectedCodes = nextCode();
++     m_nextCode = 1;
++     m_numSignals = 0;
++     m_maxBits = 0;
++     m_sigs_enabledVec.clear();
+++    for (auto& item : m_exactvars) item.second = false;
++     m_initCbsCalled.assign(m_initCbs.size(), false);
++ 
++     // Call all initialize callbacks for root instances, which will:
++     // - Call decl* for each signal (these eventually call ::declCode)
++     // - Call the initialize callbacks of library instances underneath
++     // - Store the base code
++@@ -148,13 +149,13 @@ void VerilatedTrace<VL_SUB_T, VL_BUF_T>::traceInit() VL_MT_UNSAFE {
++     if (!m_sigs_enabledVec.empty()) {
++         // Else if was empty, m_sigs_enabledp = nullptr to short circuit tests
++         // But it isn't, so alloc one bit for each code to indicate enablement
++         // We don't want to still use m_signs_enabledVec as std::vector<bool> is not
++         // guaranteed to be fast
++         m_sigs_enabledp = new uint32_t[1 + VL_WORDS_I(nextCode())]{0};
++-        m_sigs_enabledVec.reserve(nextCode());
+++        m_sigs_enabledVec.resize(nextCode(), false);
++         for (size_t code = 0; code < nextCode(); ++code) {
++             if (m_sigs_enabledVec[code]) {
++                 m_sigs_enabledp[VL_BITWORD_I(code)] |= 1U << VL_BITBIT_I(code);
++             }
++         }
++         m_sigs_enabledVec.clear();
++@@ -170,13 +171,13 @@ bool VerilatedTrace<VL_SUB_T, VL_BUF_T>::declCode(uint32_t code, const std::stri
++                                                   uint32_t bits) {
++     if (VL_UNCOVERABLE(!code)) {
++         VL_FATAL_MT(__FILE__, __LINE__, "", "Internal: internal trace problem, code 0 is illegal");
++     }
++     // To keep it simple, this is O(enables * signals), but we expect few enables
++     bool enabled = false;
++-    if (m_dumpvars.empty()) enabled = true;
+++    if (m_dumpvars.empty() && m_exactvars.empty()) enabled = true;
++     for (const auto& item : m_dumpvars) {
++         const int dumpvarsLevel = item.first;
++         const char* dvp = item.second.c_str();
++         const char* np = declName.c_str();
++         while (*dvp && *dvp == *np) {
++             ++dvp;
++@@ -193,12 +194,21 @@ bool VerilatedTrace<VL_SUB_T, VL_BUF_T>::declCode(uint32_t code, const std::stri
++         // as that's all we'll check for later
++         if (m_sigs_enabledVec.size() <= code) m_sigs_enabledVec.resize((code + 1024) * 2);
++         m_sigs_enabledVec[code] = true;
++         enabled = true;
++         break;
++     }
+++    if (!enabled && !m_exactvars.empty()) {
+++        const auto it = m_exactvars.find(declName);
+++        if (it != m_exactvars.end()) {
+++            it->second = true;
+++            if (m_sigs_enabledVec.size() <= code) m_sigs_enabledVec.resize((code + 1024) * 2);
+++            m_sigs_enabledVec[code] = true;
+++            enabled = true;
+++        }
+++    }
++ 
++     ++m_numSignals;
++     m_maxBits = std::max(m_maxBits, bits);
++     return enabled;
++ }
++ 
++@@ -556,19 +566,21 @@ void VerilatedTraceBuffer<VL_BUF_T>::fullBit(uint32_t* oldp, CData newval) {
++ }
++ 
++ template <>
++ void VerilatedTraceBuffer<VL_BUF_T>::fullEvent(uint32_t* oldp, const VlEventBase* newvalp) {
++     const uint32_t code = oldp - m_sigs_oldvalp;
++     // No need to update *oldp
+++    if (VL_UNLIKELY(m_sigs_enabledp && !(VL_BITISSET_W(m_sigs_enabledp, code)))) return;
++     if (newvalp->isTriggered()) emitEvent(code);
++ }
++ 
++ template <>
++ void VerilatedTraceBuffer<VL_BUF_T>::fullEventTriggered(uint32_t* oldp) {
++     const uint32_t code = oldp - m_sigs_oldvalp;
++     // No need to update *oldp
+++    if (VL_UNLIKELY(m_sigs_enabledp && !(VL_BITISSET_W(m_sigs_enabledp, code)))) return;
++     emitEvent(code);
++ }
++ 
++ template <>
++ void VerilatedTraceBuffer<VL_BUF_T>::fullCData(uint32_t* oldp, CData newval, int bits) {
++     const uint32_t code = oldp - m_sigs_oldvalp;
++diff --git a/include/verilated_vcd_c.h b/include/verilated_vcd_c.h
++index 931035b..90b9c2a 100644
++--- a/include/verilated_vcd_c.h
+++++ b/include/verilated_vcd_c.h
++@@ -347,12 +347,19 @@ public:
++     }
++     // Set variables to dump, using $dumpvars format
++     // If level = 0, dump everything and hier is then ignored
++     void dumpvars(int level, const std::string& hier) VL_MT_SAFE {
++         m_sptrace.dumpvars(level, hier);
++     }
+++    // Also dump the variable with this exact declaration name (scope names and its own, joined
+++    // by single spaces)
+++    void dumpvarsExact(const std::string& name) VL_MT_SAFE { m_sptrace.dumpvarsExact(name); }
+++    // The dumpvarsExact() names the last open did not declare
+++    std::vector<std::string> dumpvarsUnmatched() const VL_MT_SAFE {
+++        return m_sptrace.dumpvarsUnmatched();
+++    }
++ 
++     // Internal class access
++     VerilatedVcd* spTrace() { return &m_sptrace; }
++ };
++ 
++ #endif  // guard

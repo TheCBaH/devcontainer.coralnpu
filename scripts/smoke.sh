@@ -41,6 +41,35 @@ for sim in core_mini_axi_sim rvv_core_mini_axi_sim vme_core_mini_axi_sim; do
   check CORAL_SCALAR_PASS "$root/bin/$sim" --cycles=1000000 --trace_file="$custom_waveform" --binary="$root/examples/scalar.elf"
   test -s "$custom_waveform"
   echo "Explicit FST waveform generated: $custom_waveform"
+  case "$sim" in
+    core_mini_axi_sim) top=CoreMiniAxi ;;
+    rvv_core_mini_axi_sim) top=RvvCoreMiniAxi ;;
+    vme_core_mini_axi_sim) top=VmeCoreMiniAxi ;;
+  esac
+  printf 'hwfrp-verilator-select 1\nproducer %s fst\nselect V%s.core %s io_aclk\n' "$sim" "$top" "$top" > select.txt
+  selected_waveform="$PWD/$sim selected.fst"
+  check CORAL_SCALAR_PASS "$root/bin/$sim" --cycles=1000000 --trace_file="$selected_waveform" \
+    --trace_select=select.txt --binary="$root/examples/scalar.elf"
+  test -s "$selected_waveform"
+  test "$(stat -c %s "$selected_waveform")" -lt "$(stat -c %s "$custom_waveform")"
+  echo "Selected FST waveform generated: $selected_waveform"
+  printf 'hwfrp-verilator-select 1\nselect V%s.core %s io_aclk\nselect V%s.core %s no_such_signal\n' \
+    "$top" "$top" "$top" "$top" > unknown.txt
+  if "$root/bin/$sim" --cycles=1000000 --trace_file="$PWD/unknown.fst" --trace_select=unknown.txt \
+      --binary="$root/examples/scalar.elf" > unknown.log 2>&1; then
+    echo "An unknown selected name was accepted"
+    exit 1
+  fi
+  cat unknown.log
+  grep -q "no declaration named \"V$top.core $top no_such_signal\"" unknown.log
+  if grep -q CORAL_SCALAR_PASS unknown.log; then
+    echo "The simulator ran with an unknown selected name"
+    exit 1
+  fi
+  catalog="$PWD/$sim catalog.fst"
+  "$root/bin/$sim" --trace_catalog="$catalog" > catalog.log 2>&1
+  test -s "$catalog"
+  echo "FST catalog generated: $catalog ($(stat -c %s "$catalog") bytes)"
   rtl CORAL_X0_LOAD_PASS "$sim" x0_load.elf
   rtl CORAL_TRAP_ADDRESS_PASS "$sim" trap_address.elf
   rtl CORAL_MEMORY_PASS "$sim" memory.elf

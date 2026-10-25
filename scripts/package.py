@@ -263,7 +263,19 @@ def package(kind):
     shutil.copy2(ROOT / "fixtures/README.md", bundle / "examples/README.md")
     runtime = []
     isa = []
+    catalogs = []
     if kind == "emulators":
+        (bundle / "catalogs").mkdir()
+        for _, _, filename, relative in placed:
+            if filename in manifest.MPACT:
+                continue
+            catalog = "catalogs/" + filename + ".catalog.fst"
+            run(str(bundle / relative), "--trace_catalog=" + str(bundle / catalog), cwd=ROOT)
+            size = (bundle / catalog).stat().st_size
+            if size == 0:
+                raise RuntimeError("Empty trace catalog: " + catalog)
+            print("catalog", catalog, size, flush=True)
+            catalogs.append(catalog)
         mpact_riscv, = output_root.glob("*com_google_mpact-riscv")
         (bundle / "isa").mkdir()
         zvt_export.export(mpact_riscv, SOURCE, bundle / "isa/zvt.jsonl", revision)
@@ -338,6 +350,7 @@ def package(kind):
         "files": sorted(relative for _, _, _, relative in placed),
         "examples": sorted(EXAMPLES[kind]),
         "isa": isa,
+        "catalogs": sorted(catalogs),
         "runtime_libraries": sorted(libraries),
         "runtime_packages": run("dpkg-query", "-W", "-f=${Package} ${Version}\n",
                                 "libstdc++6", "libgcc-s1", cwd=ROOT).splitlines(),
