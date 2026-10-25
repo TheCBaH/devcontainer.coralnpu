@@ -109,6 +109,7 @@ for sim in rvv_core_mini_itcm512kb_dtcm512kb_axi_sim rvv_core_mini_highmem_axi_s
   rtl CORAL_RVV_PASS "$sim" rvv_tcm512k.elf
   rtl CORAL_RVV_FP_PASS "$sim" rvv_fp_tcm512k.elf
 done
+bash "$root/smoke-vcd.sh"
 uninit() {
   timeout --kill-after=5 300 "$root/bin/$1" --cycles=1000000 "${@:3}" --binary="$root/examples/$2" >output.log 2>&1
   sed -n 's/^CORAL_UNINIT_TCM_PASS \([0-9a-f]\{32\}\)$/\1/p' output.log

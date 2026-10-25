@@ -1,0 +1,533 @@
+diff --git a/hdl/chisel/src/coralnpu/BUILD b/hdl/chisel/src/coralnpu/BUILD
+index fb3c4f4..37868e0 100644
+--- a/hdl/chisel/src/coralnpu/BUILD
++++ b/hdl/chisel/src/coralnpu/BUILD
+@@ -22,6 +22,7 @@ load(
+ )
+ load("@coralnpu_hw//rules:lint.bzl", "vcstatic_lint")
+ load("@coralnpu_hw//rules:utils.bzl", "filter_files_by_extension", "template_rule")
++load("@coralnpu_hw//rules:verilator.bzl", "verilator_cc_library")
+ load("@coralnpu_hw//rules:verilog.bzl", "verilog_zip_bundle")
+ load(
+     "//hdl/chisel/src/coralnpu:flags.bzl",
+@@ -620,6 +621,17 @@ template_rule(
+     vopts = CORE_MINI_AXI_VOPTS,
+ )
+ 
++# The same Verilog as core_mini_axi_cc_library, verilated for VCD tracing: a model has one trace
++# format, so the VCD simulator needs a model of its own.
++verilator_cc_library(
++    name = "core_mini_axi_vcd_cc_library",
++    module = ":core_mini_axi_cc_library_verilog",
++    module_top = "CoreMiniAxi",
++    systemc = True,
++    trace_format = "vcd",
++    vopts = CORE_MINI_AXI_VOPTS + ["--pins-bv", "2"],
++)
++
+ chisel_cc_library(
+     name = "core_mini_highmem_axi_cc_library",
+     chisel_lib = ":coralnpu",
+diff --git a/rules/verilator.bzl b/rules/verilator.bzl
+index 2d0781b..c0b8774 100644
+--- a/rules/verilator.bzl
++++ b/rules/verilator.bzl
+@@ -420,7 +420,7 @@ def _verilator_cc_library_impl(ctx):
+     ])
+ 
+     if ctx.attr.trace:
+-        verilator_flags.append("--trace-fst")
++        verilator_flags.append("--trace-vcd" if ctx.attr.trace_format == "vcd" else "--trace-fst")
+ 
+     for opt in ctx.attr.vopts:
+         verilator_flags.append(opt)
+@@ -453,6 +453,8 @@ def _verilator_cc_library_impl(ctx):
+         defines.append("VM_SC")
+     if ctx.attr.trace:
+         defines.append("VM_TRACE")
++        if ctx.attr.trace_format == "vcd":
++            defines.append("VM_TRACE_VCD")
+ 
+     copts = [
+         "-Wno-sign-compare",
+@@ -535,6 +537,12 @@ verilator_cc_library = rule(
+             doc = "Enable tracing for Verilator",
+             default = True,
+         ),
++        "trace_format": attr.string(
++            doc = "Trace format: Verilator generates trace code for one format per model. " +
++                  "Dependents see VM_TRACE_VCD when it is vcd.",
++            default = "fst",
++            values = ["fst", "vcd"],
++        ),
+         "vopts": attr.string_list(
+             doc = "Additional command line options to pass to Verilator",
+             default = ["-Wall"],
+diff --git a/tests/verilator_sim/BUILD b/tests/verilator_sim/BUILD
+index 6815781..5324d79 100644
+--- a/tests/verilator_sim/BUILD
++++ b/tests/verilator_sim/BUILD
+@@ -45,6 +45,7 @@ cc_library(
+ cc_library(
+     name = "sim_libs",
+     hdrs = [
++        "fd_vcd_file.h",
+         "fifo.h",
+         "sysc_module.h",
+         "sysc_tb.h",
+@@ -101,6 +102,17 @@ template_rule(
+                 "VERILATOR_MODEL=VCoreMiniAxi",
+             ],
+         },
++        "core_mini_axi_vcd_tb": {
++            "srcs": [
++                "@coralnpu_hw//hdl/chisel/src/coralnpu:VCoreMiniAxi_parameters.h",
++            ] + CORE_MINI_AXI_TB_CC_LIBRARY_COMMON_SRCS,
++            "deps": [
++                "//hdl/chisel/src/coralnpu:core_mini_axi_vcd_cc_library",
++            ] + CORE_MINI_AXI_TB_CC_LIBRARY_COMMON_DEPS,
++            "defines": [
++                "VERILATOR_MODEL=VCoreMiniAxi",
++            ],
++        },
+         "core_mini_verification_axi_tb": {
+             "srcs": [
+                 "@coralnpu_hw//hdl/chisel/src/coralnpu:VCoreMiniVerificationAxi_parameters.h",
+@@ -215,6 +227,11 @@ template_rule(
+                 ":core_mini_axi_tb",
+             ] + CORE_MINI_AXI_SIM_CC_BINARY_COMMON_DEPS,
+         },
++        "core_mini_axi_vcd_sim": {
++            "deps": [
++                ":core_mini_axi_vcd_tb",
++            ] + CORE_MINI_AXI_SIM_CC_BINARY_COMMON_DEPS,
++        },
+         "core_mini_verification_axi_sim": {
+             "deps": [
+                 ":core_mini_verification_axi_tb",
+@@ -317,6 +334,16 @@ cc_test(
+     ],
+ )
+ 
++cc_test(
++    name = "fd_vcd_file_test",
++    srcs = [
++        "fd_vcd_file.h",
++        "fd_vcd_file_test.cc",
++    ],
++    size = "small",
++    deps = ["@verilator//:libverilator"],
++)
++
+ cc_test(
+     name = "sysc_tb_trace_test",
+     srcs = ["sysc_tb_trace_test.cc"],
+diff --git a/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc b/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
+index 1d8fb96..df0ada4 100644
+--- a/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
++++ b/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
+@@ -38,11 +38,16 @@ ABSL_FLAG(int, cycles, 100000000, "Simulation cycles");
+ ABSL_FLAG(bool, trace, false, "Dump FST trace");
+ ABSL_FLAG(std::string, trace_file, "", "Output path for FST trace file (enables tracing if set)");
+ ABSL_FLAG(std::string, trace_catalog, "",
+-          "Write an FST of every traceable signal declaration, with no values, to this path and "
++          "Write a trace of every traceable signal declaration, with the values at time zero, to this path and "
+           "exit without running; --binary is not needed");
+ ABSL_FLAG(std::string, trace_select, "",
+           "Trace only the signals this selection manifest names (with --trace or --trace_file); "
+           "a name that matches no declaration is an error");
++ABSL_FLAG(int, trace_fd, -1,
++          "VCD simulators only: write the trace to this open descriptor, as the simulation runs, "
++          "with blocking writes; the reader sees end of input when the simulator exits");
++ABSL_FLAG(int, trace_flush_interval, 4096,
++          "Flush the trace every N dump timestamps (1: after each; 0: only when a buffer is full)");
+ ABSL_FLAG(std::string, binary, "", "Binary to execute");
+ ABSL_FLAG(bool, debug_axi, false, "Enable AXI traffic debugging");
+ ABSL_FLAG(bool, instr_trace, false, "Log instructions to console");
+@@ -51,7 +56,7 @@ ABSL_FLAG(bool, backdoor_load, false, "Enable high-speed backdoor code loading")
+ static int run(const char* name, const std::string binary, const int cycles,
+                 const bool trace, const std::string& trace_file,
+                 const std::string& trace_catalog, const std::string& trace_select,
+-                const bool debug_axi, const bool instr_trace,
++                const int trace_fd, const int trace_flush_interval, const bool debug_axi, const bool instr_trace,
+                 const bool backdoor_load) {
+   CoreMiniAxi_tb tb(CoreMiniAxi_tb::kCoreMiniAxiModelName, cycles, /* random= */ false, debug_axi,
+                     instr_trace, backdoor_load,
+@@ -65,12 +70,17 @@ static int run(const char* name, const std::string binary, const int cycles,
+   if (!trace_catalog.empty()) {
+     return tb.trace(tb.core(), trace_catalog.c_str(), {}, /*catalog=*/true) ? 0 : 126;
+   }
+-  if (trace || !trace_file.empty()) {
++  tb.set_trace_flush_interval(trace_flush_interval < 0 ? 0 : trace_flush_interval);
++  if (trace || !trace_file.empty() || trace_fd >= 0) {
++    if (trace_fd >= 0 && (trace || !trace_file.empty())) {
++      LOG(ERROR) << "--trace_fd replaces --trace and --trace_file";
++      return 126;
++    }
+     std::vector<std::string> select;
+     if (!trace_select.empty() && !Sysc_tb::ReadTraceSelection(trace_select, &select)) return 126;
+-    if (!tb.trace(tb.core(), trace_file.c_str(), select)) return 126;
++    if (!tb.trace(tb.core(), trace_file.c_str(), select, /*catalog=*/false, trace_fd)) return 126;
+   } else if (!trace_select.empty()) {
+-    LOG(ERROR) << "--trace_select needs --trace or --trace_file";
++    LOG(ERROR) << "--trace_select needs --trace, --trace_file or --trace_fd";
+     return 126;
+   }
+ 
+@@ -109,6 +119,7 @@ extern "C" int sc_main(int argc, char** argv) {
+         absl::GetFlag(FLAGS_cycles), absl::GetFlag(FLAGS_trace),
+         absl::GetFlag(FLAGS_trace_file),
+         absl::GetFlag(FLAGS_trace_catalog), absl::GetFlag(FLAGS_trace_select),
++        absl::GetFlag(FLAGS_trace_fd), absl::GetFlag(FLAGS_trace_flush_interval),
+         absl::GetFlag(FLAGS_debug_axi), absl::GetFlag(FLAGS_instr_trace),
+         absl::GetFlag(FLAGS_backdoor_load));
+   } catch (const sc_core::sc_report& report) {
+diff --git a/tests/verilator_sim/fd_vcd_file.h b/tests/verilator_sim/fd_vcd_file.h
+new file mode 100644
+index 0000000..0a9930d
+--- /dev/null
++++ b/tests/verilator_sim/fd_vcd_file.h
+@@ -0,0 +1,62 @@
++// Copyright 2026 Google LLC
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++#ifndef TESTS_VERILATOR_SIM_FD_VCD_FILE_H_
++#define TESTS_VERILATOR_SIM_FD_VCD_FILE_H_
++
++#include <errno.h>
++#include <fcntl.h>
++#include <unistd.h>
++
++#include <cstdio>
++#include <cstdlib>
++#include <string>
++
++#include "verilated_vcd_c.h"  // NOLINT(build/include_subdir): From verilator.
++
++// A VCD output on a descriptor the caller owns, typically a pipe to a consumer that reads as the
++// simulation runs. Verilator's own VerilatedVcdFile opens its file non-blocking and retries a full
++// pipe at once, so a slow consumer makes the simulator spin; this one makes the descriptor blocking
++// and waits in write(2). If the consumer goes away, the simulation ends with status 141.
++class FdVcdFile : public VerilatedVcdFile {
++ public:
++  explicit FdVcdFile(int fd) : fd_(fd) {}
++
++  // Returns false if [fd] is not a descriptor or cannot be made blocking.
++  bool Prepare() {
++    const int flags = fcntl(fd_, F_GETFL);
++    return flags >= 0 && fcntl(fd_, F_SETFL, flags & ~O_NONBLOCK) == 0;
++  }
++
++  bool open(const std::string&) override { return true; }
++  void close() override {}  // The descriptor is the caller's; its end is the consumer's end of input.
++
++  ssize_t write(const char *bufp, ssize_t len) override {
++    for (;;) {
++      const ssize_t got = ::write(fd_, bufp, len);
++      if (got >= 0) return got;
++      if (errno == EINTR) continue;
++      if (errno == EPIPE) {
++        fprintf(stderr, "trace_fd: the consumer closed the trace\n");
++        std::_Exit(141);
++      }
++      return got;  // Verilator reports any other error as fatal.
++    }
++  }
++
++ private:
++  int fd_;
++};
++
++#endif  // TESTS_VERILATOR_SIM_FD_VCD_FILE_H_
+diff --git a/tests/verilator_sim/fd_vcd_file_test.cc b/tests/verilator_sim/fd_vcd_file_test.cc
+new file mode 100644
+index 0000000..7ff3f3a
+--- /dev/null
++++ b/tests/verilator_sim/fd_vcd_file_test.cc
+@@ -0,0 +1,103 @@
++// Copyright 2026 Google LLC
++//
++// Licensed under the Apache License, Version 2.0 (the "License");
++// you may not use this file except in compliance with the License.
++// You may obtain a copy of the License at
++//
++//     http://www.apache.org/licenses/LICENSE-2.0
++//
++// Unless required by applicable law or agreed to in writing, software
++// distributed under the License is distributed on an "AS IS" BASIS,
++// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++// See the License for the specific language governing permissions and
++// limitations under the License.
++
++// FdVcdFile on a pipe whose reader is slow: the writer waits in write(2) instead of spinning, and
++// loses nothing; a reader that goes away ends the process with status 141.
++#include <sys/resource.h>
++#include <sys/wait.h>
++#include <unistd.h>
++
++#include <chrono>
++#include <csignal>
++#include <cstdio>
++#include <string>
++
++#include "tests/verilator_sim/fd_vcd_file.h"
++
++namespace {
++
++int failures = 0;
++
++void Check(bool ok, const std::string &what) {
++  printf("%s: %s\n", ok ? "ok  " : "FAIL", what.c_str());
++  if (!ok) ++failures;
++}
++
++double CpuSeconds() {
++  rusage usage;
++  getrusage(RUSAGE_SELF, &usage);
++  return usage.ru_utime.tv_sec + usage.ru_stime.tv_sec +
++         (usage.ru_utime.tv_usec + usage.ru_stime.tv_usec) * 1e-6;
++}
++
++}  // namespace
++
++int main() {
++  // 1 MiB through a pipe (64 KiB) to a reader that sleeps for 2 s before it reads at all.
++  constexpr size_t kBytes = 1 << 20;
++  int fds[2];
++  if (pipe(fds) != 0) return 2;
++  const pid_t reader = fork();
++  if (reader == 0) {
++    close(fds[1]);
++    sleep(2);
++    char buf[4096];
++    size_t total = 0;
++    ssize_t got;
++    while ((got = read(fds[0], buf, sizeof buf)) > 0) total += got;
++    _exit(total == kBytes ? 0 : 1);
++  }
++  close(fds[0]);
++
++  FdVcdFile file(fds[1]);
++  Check(file.Prepare(), "the descriptor is made blocking");
++  Check(file.open("ignored"), "open takes the descriptor as it is");
++  const std::string chunk(8192, 'x');
++  const auto start = std::chrono::steady_clock::now();
++  const double cpu_start = CpuSeconds();
++  size_t sent = 0;
++  while (sent < kBytes) {
++    const ssize_t got = file.write(chunk.data(), chunk.size());
++    if (got < 0) break;
++    sent += got;
++  }
++  const double waited =
++      std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
++  const double cpu = CpuSeconds() - cpu_start;
++  file.close();
++  close(fds[1]);
++  int status = 0;
++  waitpid(reader, &status, 0);
++  Check(sent == kBytes, "everything is written");
++  Check(WIFEXITED(status) && WEXITSTATUS(status) == 0, "and read, in order of arrival");
++  Check(waited > 1.5, "the writer waited for the reader (" + std::to_string(waited) + " s)");
++  Check(cpu < 0.5, "and did not spin (" + std::to_string(cpu) + " s of CPU)");
++
++  // The reader goes away: the process ends with 141, without a failure report from Verilator.
++  if (pipe(fds) != 0) return 2;
++  const pid_t writer = fork();
++  if (writer == 0) {
++    close(fds[0]);
++    FdVcdFile gone(fds[1]);
++    signal(SIGPIPE, SIG_IGN);
++    for (;;) gone.write(chunk.data(), chunk.size());
++  }
++  close(fds[0]);
++  close(fds[1]);
++  waitpid(writer, &status, 0);
++  Check(WIFEXITED(status) && WEXITSTATUS(status) == 141, "a closed reader ends the writer with 141");
++
++  printf("%d failures\n", failures);
++  return failures == 0 ? 0 : 1;
++}
+diff --git a/tests/verilator_sim/sysc_tb.h b/tests/verilator_sim/sysc_tb.h
+index eaa5f34..7490678 100644
+--- a/tests/verilator_sim/sysc_tb.h
++++ b/tests/verilator_sim/sysc_tb.h
+@@ -21,13 +21,26 @@
+ #include <cstdio>
+ #include <fstream>
+ #include <iostream>
++#include <memory>
+ #include <string>
+ #include <vector>
+ 
+ #include "tests/verilator_sim/fifo.h"
+ // sc_core needs to be included before verilator header
+ using namespace sc_core;      // NOLINT(build/namespaces)
++// A Verilated model has one trace format; VM_TRACE_VCD says which (see verilator_cc_library).
++#ifdef VM_TRACE_VCD
++#include "tests/verilator_sim/fd_vcd_file.h"
++#include "verilated_vcd_c.h"  // NOLINT(build/include_subdir): From verilator.
++using TraceFile = VerilatedVcdC;
++constexpr char kTraceFormat[] = "vcd";
++constexpr char kTraceSuffix[] = ".vcd";
++#else
+ #include "verilated_fst_c.h"  // NOLINT(build/include_subdir): From verilator.
++using TraceFile = VerilatedFstC;
++constexpr char kTraceFormat[] = "fst";
++constexpr char kTraceSuffix[] = ".fst";
++#endif
+ 
+ using sc_dt::sc_bv;
+ 
+@@ -132,7 +145,7 @@ struct Sysc_tb : public sc_module {
+     clock_(clock);
+ 
+     // Verilated::commandArgs(argc, argv);
+-    tf_ = new VerilatedFstC;
++    tf_ = new TraceFile;
+   }
+ 
+   ~Sysc_tb() {
+@@ -181,7 +194,16 @@ struct Sysc_tb : public sc_module {
+       return false;
+     }
+     while (std::getline(in, line)) {
+-      if (line.rfind("producer ", 0) == 0) continue;
++      if (line.rfind("producer ", 0) == 0) {
++        // `producer NAME FORMAT`: the names mean something only to the format they were made for.
++        const size_t space = line.rfind(' ');
++        if (space > strlen("producer") && line.substr(space + 1) != kTraceFormat) {
++          fprintf(stderr, "trace_select: %s: made for a %s simulator, this one traces %s\n",
++                  path.c_str(), line.substr(space + 1).c_str(), kTraceFormat);
++          return false;
++        }
++        continue;
++      }
+       if (line.rfind("select ", 0) != 0) {
+         fprintf(stderr, "trace_select: %s: unknown line \"%s\"\n", path.c_str(), line.c_str());
+         return false;
+@@ -195,23 +217,56 @@ struct Sysc_tb : public sc_module {
+     return true;
+   }
+ 
++  // Flush the trace every [n] dump timestamps; 1 for each, 0 never (until the buffer is full).
++  void set_trace_flush_interval(uint32_t n) { trace_flush_interval_ = n; }
++
+   // Opens the trace at [path] for [design] and, if [select] is not empty, records only the
+   // variables with those exact declaration names; a name that no declaration has is an error.
+   // Returns false (with the trace closed) on an error. With [catalog], closes the trace at once:
+-  // the file declares every signal and holds no values.
++  // the file declares every signal and holds the values of one dump. With [fd] (VCD simulators only), the
++  // trace goes to that descriptor, in blocking writes, and [name] is not used.
+   template <typename T>
+   bool trace(T* design, const char *name = "", const std::vector<std::string> &select = {},
+-             bool catalog = false) {
++             bool catalog = false, int fd = -1) {
+     std::string path;
+-    if (name != nullptr && strlen(name) > 0) {
++    if (fd >= 0) {
++#ifdef VM_TRACE_VCD
++      if (catalog) {
++        fprintf(stderr, "trace_fd: a catalog is written to a file\n");
++        return false;
++      }
++      fd_file_ = std::make_unique<FdVcdFile>(fd);
++      if (!fd_file_->Prepare()) {
++        fprintf(stderr, "trace_fd: %d: not a descriptor that can be written\n", fd);
++        return false;
++      }
++      name = "";
++#else
++      fprintf(stderr, "trace_fd: only the VCD simulators write a trace to a descriptor\n");
++      return false;
++#endif
++    }
++    // A trace file takes the time unit of the Verilated context when it is made, which is not the
++    // unit the model sets before this point: make it now, the same way for a file and a descriptor.
++    delete tf_;
++#ifdef VM_TRACE_VCD
++    tf_ = new TraceFile(fd_file_.get());
++#else
++    tf_ = new TraceFile;
++#endif
++    if (fd >= 0) {
++      path = "fd:" + std::to_string(fd);
++    } else if (name != nullptr && strlen(name) > 0) {
+       path = name;
+-      if (path.size() < 4 || path.substr(path.size() - 4) != ".fst") {
+-        path += ".fst";
++      const std::string suffix = kTraceSuffix;
++      if (path.size() < suffix.size() ||
++          path.compare(path.size() - suffix.size(), suffix.size(), suffix) != 0) {
++        path += suffix;
+       }
+     } else {
+       const char *test_tmpdir = std::getenv("TEST_TMPDIR");
+       std::string dir = (test_tmpdir != nullptr && strlen(test_tmpdir) > 0) ? test_tmpdir : "/tmp";
+-      path            = dir + "/" + design->name() + ".fst";
++      path            = dir + "/" + design->name() + kTraceSuffix;
+     }
+ 
+     reset = 1;
+@@ -232,12 +287,14 @@ struct Sysc_tb : public sc_module {
+       tf_->close();
+       delete tf_;
+       tf_ = nullptr;
+-      std::remove(path.c_str());
++      if (fd < 0) std::remove(path.c_str());
+       return false;
+     }
+     printf("\nInfo: default timescale unit used for tracing: 1 ps (%s)\n",
+            path.c_str());
+     if (catalog) {
++      // An FST with no value block is not a valid file: one dump makes it complete.
++      tf_->dump(sim_time_);
+       tf_->close();
+       delete tf_;
+       tf_ = nullptr;
+@@ -317,16 +374,19 @@ struct Sysc_tb : public sc_module {
+   sc_in<bool> clock_;
+ 
+   uint32_t sim_time_ = 0;
+-  VerilatedFstC *tf_ = nullptr;
++  TraceFile *tf_ = nullptr;
++#ifdef VM_TRACE_VCD
++  std::unique_ptr<FdVcdFile> fd_file_;  // The trace_fd output, outliving tf_.
++#endif
+ 
+   // Every FST flush ends a block, and each block starts with the value of
+   // every signal, so flushing after each dump makes the waveform far larger
+   // than its VCD. Flush periodically to bound what a crashed run loses.
+-  static constexpr uint32_t kTraceFlushInterval = 4096;
++  uint32_t trace_flush_interval_ = 4096;
+ 
+   void trace_dump() {
+     tf_->dump(sim_time_++);
+-    if (sim_time_ % kTraceFlushInterval == 0) tf_->flush();
++    if (trace_flush_interval_ != 0 && sim_time_ % trace_flush_interval_ == 0) tf_->flush();
+   }
+ 
+   void tb_posedge() {
+diff --git a/tests/verilator_sim/sysc_tb_trace_test.cc b/tests/verilator_sim/sysc_tb_trace_test.cc
+index 27c801b..8014d81 100644
+--- a/tests/verilator_sim/sysc_tb_trace_test.cc
++++ b/tests/verilator_sim/sysc_tb_trace_test.cc
+@@ -105,6 +105,7 @@ int sc_main(int, char **) {
+   const char *bad[][2] = {{"version", "hwfrp-verilator-select 2\nselect a b\n"},
+                           {"empty", "hwfrp-verilator-select 1\nproducer sim fst\n"},
+                           {"line", "hwfrp-verilator-select 1\nselects a b\n"},
++                          {"format", "hwfrp-verilator-select 1\nproducer sim vcd\nselect a b\n"},
+                           {"header", "select a b\n"}};
+   for (const auto &item : bad) {
+     names.clear();

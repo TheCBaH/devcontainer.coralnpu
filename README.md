@@ -148,13 +148,33 @@ select VCoreMiniAxi.core CoreMiniAxi io_aclk
 ```
 
 `--trace_catalog=path.fst` writes the declarations of every traceable signal,
-with no values, and exits without running (`--binary` is not needed).
+with the values of one dump at time zero (a trace without a value block is not
+a valid FST), and exits without running (`--binary` is not needed).
 `catalogs/` in the emulator archive holds one per RTL simulator. Selection is
 implemented by wrapper patch 0027, which adds an exact-name entry point to
 Verilator's trace runtime and fixes two defects of its enable mask (a vector
 read past its end for sparse selections, and SystemVerilog events that bypass
 the mask); `make trace-tests` checks it on the runtime, under libstdc++ debug
 containers.
+
+`core_mini_axi_vcd_sim` is `core_mini_axi_sim` built for a live consumer. A
+Verilated model has one trace format, so it has a model of its own, traced as
+VCD: `--trace_file=path.vcd` writes a file, and `--trace_fd=N` writes the trace
+to the open descriptor N, as the simulation runs, so that a pipe to a program
+reading the waveform shows it while the run is in progress:
+
+```sh
+core_mini_axi_vcd_sim --binary=prog.elf --trace_fd=3 3>&1 1>&2 | consumer -
+```
+
+The writes block when the reader is slow; Verilator's own file output retries
+them in a busy loop. If the reader closes the pipe the simulator ends with
+status 141. `--trace_flush_interval=N` (default 4096) flushes the trace every N
+timestamps, 1 for each, and applies to FST as well. A VCD stream ends at the
+simulator's exit, so a reader that must know the run completed takes the
+simulator's exit status (`set -o pipefail`), not the end of input.
+`--trace_select` and `--trace_catalog` work as above, with a manifest whose
+`producer` line says `vcd`, and the catalog is `catalogs/core_mini_axi_vcd_sim.catalog.vcd`.
 
 ## Development
 

@@ -32,6 +32,7 @@ EMULATORS = {
     "coralnpu_m3_sim": ("@coralnpu_mpact//sim:coralnpu_m3_sim", None, None),
     "coralnpu_m4_sim": ("@coralnpu_mpact//sim:coralnpu_m4_sim", None, None),
     "core_mini_axi_sim": ("//tests/verilator_sim:core_mini_axi_sim", "core_mini_axi_cc_library", "CoreMiniAxi"),
+    "core_mini_axi_vcd_sim": ("//tests/verilator_sim:core_mini_axi_vcd_sim", None, None),
     "rvv_core_mini_axi_sim": ("//tests/verilator_sim:rvv_core_mini_axi_sim", "rvv_core_mini_axi_cc_library",
                               "RvvCoreMiniAxi"),
     "vme_core_mini_axi_sim": ("//tests/verilator_sim:vme_core_mini_axi_sim", "vme_core_mini_axi_cc_library",
@@ -47,6 +48,8 @@ EMULATORS = {
                                                   "rvv_core_mini_itcm512kb_dtcm512kb_axi_cc_library",
                                                   "RvvCoreMini_ITCM512KB_DTCM512KBAxi"),
 }
+# The VCD simulators are the same hardware configuration as these, traced in another format.
+VCD_SIMULATORS = {"core_mini_axi_vcd_sim": "core_mini_axi_sim"}
 LIBRARIES = {
     "libcoralnpu_simulator.so": ("//hw_sim:libcoralnpu_simulator.so", "core_mini_axi_cc_library", "CoreMiniAxi"),
     "libcoralnpu_simulator_rvv.so": ("//hw_sim:libcoralnpu_simulator_rvv.so", "rvv_core_mini_axi_cc_library",

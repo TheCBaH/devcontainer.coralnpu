@@ -13,6 +13,7 @@ concurrency:
 jobs:
   selection:
     name: Trace selection
+    if: ${{ !startsWith(github.ref_name, 'trace-smoke') }}
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
@@ -52,3 +53,27 @@ jobs:
             actions-${{ runner.arch }}-
       - name: Test trace selection
         run: ${{ steps.container.outputs.exec }} make trace-tests
+  vcd-smoke:
+    name: VCD smoke on a built archive
+    # Runs scripts/smoke-vcd.sh on the emulator archive of the workflow run named in .smoke-run (its
+    # archives-x86_64 or diagnostics-x86_64 artifact), so the script can be iterated on in minutes.
+    if: startsWith(github.ref_name, 'trace-smoke')
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(cat .smoke-run)
+          for name in archives-x86_64 diagnostics-x86_64; do
+            gh run download "$run" -n "$name" -D archive 2>/dev/null && break
+          done
+          mkdir -p bundle
+          tar -xzf archive/coralnpu-emulators-linux-x86_64.tar.gz -C bundle
+          cp scripts/smoke-vcd.sh bundle/coralnpu-emulators-linux-x86_64/smoke-vcd.sh
+      - name: Smoke
+        run: bash bundle/coralnpu-emulators-linux-x86_64/smoke-vcd.sh

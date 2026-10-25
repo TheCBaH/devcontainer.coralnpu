@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tarfile
 
-from build import ROOT, SOURCE, VME_TESTS, RVV_MATMUL_TESTS, run
+from build import ROOT, SOURCE, VME_TESTS, RVV_MATMUL_TESTS, VCD_SIMULATORS, run
 import manifest
 import validate_manifest
 import zvt_export
@@ -192,6 +192,8 @@ def configurations(kind, outputs, revision):
     records = {}
     for name, path in outputs["files"].items():
         model = outputs["elaboration"].get(name)
+        if name in VCD_SIMULATORS:
+            continue
         if kind == "emulators" and name in manifest.MPACT:
             record = manifest.mpact(name, revision)
         elif kind == "emulators":
@@ -201,6 +203,9 @@ def configurations(kind, outputs, revision):
         else:
             record = manifest.subsystem(name, model, revision)
         records[name] = manifest.finalize(record)
+    for name, base in VCD_SIMULATORS.items():
+        if name in outputs["files"]:
+            records[name] = records[base]
     return records
 
 
@@ -269,7 +274,7 @@ def package(kind):
         for _, _, filename, relative in placed:
             if filename in manifest.MPACT:
                 continue
-            catalog = "catalogs/" + filename + ".catalog.fst"
+            catalog = "catalogs/" + filename + (".catalog.vcd" if filename in VCD_SIMULATORS else ".catalog.fst")
             run(str(bundle / relative), "--trace_catalog=" + str(bundle / catalog), cwd=ROOT)
             size = (bundle / catalog).stat().st_size
             if size == 0:
@@ -282,6 +287,7 @@ def package(kind):
         isa.append("isa/zvt.jsonl")
         shutil.copy2(ROOT / "scripts/smoke.sh", bundle / "smoke.sh")
         shutil.copy2(ROOT / "scripts/host-contract.sh", bundle / "host-contract.sh")
+        shutil.copy2(ROOT / "scripts/smoke-vcd.sh", bundle / "smoke-vcd.sh")
         shutil.copy2(ROOT / "scripts/matrix-memory.sh", bundle / "matrix-memory.sh")
         shutil.copy2(ROOT / "scripts/mpact-limits.sh", bundle / "mpact-limits.sh")
     elif kind == "libraries":
@@ -329,13 +335,14 @@ def package(kind):
             "build_tools": build_tools(),
         },
         "id_rule": manifest.ID_RULE,
-        "configurations": sorted(records.values(), key=lambda record: record["name"]),
+        "configurations": sorted({record["id"]: record for record in records.values()}.values(),
+                                 key=lambda record: record["name"]),
         "artifacts": [artifact(bundle, relative, records[filename], kind, lib_files + runtime)
                       for _, _, filename, relative in sorted(placed, key=lambda item: item[3])],
         "fixtures": [{"path": "examples/" + example, "sha256": manifest.sha256(bundle / "examples" / example),
                       "marker": marker, "linker_layout": "linker/" + layout,
-                      "configurations": sorted(record["id"] for record in records.values()
-                                               if record["name"] in names)}
+                      "configurations": sorted({record["id"] for record in records.values()
+                                                if record["name"] in names})}
                      for example, (marker, names, layout) in sorted(EXAMPLES[kind].items())],
     }
     (bundle / "hardware-configurations.json").write_text(
