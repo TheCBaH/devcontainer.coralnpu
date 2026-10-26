@@ -35,6 +35,6 @@ for group in "${groups[@]}"; do
 done
 bazel --output_user_root="$root/.cache/bazel" test -c opt \
   --repository_cache="$root/.cache/repos" --disk_cache="$root/.cache/actions" \
-  --jobs="${BUILD_JOBS:-2}" --verbose_failures --test_output=errors \
+  ${BUILD_JOBS:+--jobs="$BUILD_JOBS"} --verbose_failures --test_output=errors \
   --keep_going --test_timeout=900 --test_env=COCOTB_RANDOM_SEED=42 \
   --test_env=PYTHONHASHSEED=42 "${targets[@]}"

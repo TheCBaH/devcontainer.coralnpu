@@ -75,11 +75,12 @@ def run(*args, cwd=SOURCE):
 
 def bazel(*args):
     cache = ROOT / ".cache"
+    # Bazel sizes its jobs from the CPUs and memory; BUILD_JOBS overrides that.
+    jobs = ["--jobs=" + os.environ["BUILD_JOBS"]] if os.environ.get("BUILD_JOBS") else []
     return run("bazel", "--output_user_root=" + str(cache / "bazel"), *args,
                "--repository_cache=" + str(cache / "repos"),
                "--disk_cache=" + str(cache / "actions"),
-               "--jobs=" + os.environ.get("BUILD_JOBS", "2"),
-               "--verbose_failures")
+               *jobs, "--verbose_failures")
 
 
 def attributes(label):
