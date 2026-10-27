@@ -4,7 +4,6 @@ on:
     tags: ['v*']
 permissions:
   contents: read
-  actions: write
   packages: write
 jobs:
   validate:

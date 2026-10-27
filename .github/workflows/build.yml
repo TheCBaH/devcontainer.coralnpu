@@ -13,7 +13,6 @@ on:
 permissions:
   contents: read
   packages: write
-  actions: write
 concurrency:
   group: build-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
@@ -55,10 +54,8 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/actions
-          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
-          restore-keys: |
-            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
-            actions-${{ runner.arch }}-
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}
+          restore-keys: actions-${{ runner.arch }}-
       - name: Build guest fixtures
         run: $EXEC make fixtures
       - name: Test RTL retirement
@@ -107,10 +104,8 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/actions
-          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
-          restore-keys: |
-            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
-            actions-${{ runner.arch }}-
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}
+          restore-keys: actions-${{ runner.arch }}-
       - name: Test DMA, TileLink and DDR paths
         run: ${{ steps.container.outputs.exec }} make dma-tests
       - name: Collect test logs
@@ -174,10 +169,8 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/actions
-          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
-          restore-keys: |
-            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
-            actions-${{ runner.arch }}-
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}
+          restore-keys: actions-${{ runner.arch }}-
       - name: Build and package
         run: $EXEC make package
       - name: Test external archives
@@ -196,28 +189,17 @@ jobs:
           path: dist/*
           if-no-files-found: ignore
       - name: Save Bazel repository cache
-        id: repos-save
         if: success() && github.event_name != 'pull_request' && steps.repos-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .cache/repos/content_addressable
           key: ${{ steps.repos-cache.outputs.cache-primary-key }}
       - name: Save Bazel action cache
-        id: actions-save
-        if: always() && github.event_name != 'pull_request' && steps.actions-cache.outputs.cache-primary-key != ''
+        if: success() && github.event_name != 'pull_request' && steps.actions-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .cache/actions
           key: ${{ steps.actions-cache.outputs.cache-primary-key }}
-      - name: Prune superseded caches
-        if: always() && github.event_name != 'pull_request'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          [ '${{ steps.actions-save.outcome }}' = success ] && scripts/prune-cache.sh actions-${{ runner.arch }}-
-          [ '${{ steps.repos-save.outcome }}' = success ] && scripts/prune-cache.sh downloads-${{ runner.arch }}-
-          exit 0
       - name: Disk usage
         if: always()
         run: |
@@ -267,10 +249,8 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/actions
-          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
-          restore-keys: |
-            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
-            actions-${{ runner.arch }}-
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}
+          restore-keys: actions-${{ runner.arch }}-
       - name: Build and package
         run: $EXEC make package
       - name: Test external archives
@@ -289,28 +269,17 @@ jobs:
           path: dist/*
           if-no-files-found: ignore
       - name: Save Bazel repository cache
-        id: repos-save
         if: success() && github.event_name != 'pull_request' && steps.repos-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .cache/repos/content_addressable
           key: ${{ steps.repos-cache.outputs.cache-primary-key }}
       - name: Save Bazel action cache
-        id: actions-save
-        if: always() && github.event_name != 'pull_request' && steps.actions-cache.outputs.cache-primary-key != ''
+        if: success() && github.event_name != 'pull_request' && steps.actions-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .cache/actions
           key: ${{ steps.actions-cache.outputs.cache-primary-key }}
-      - name: Prune superseded caches
-        if: always() && github.event_name != 'pull_request'
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          [ '${{ steps.actions-save.outcome }}' = success ] && scripts/prune-cache.sh actions-${{ runner.arch }}-
-          [ '${{ steps.repos-save.outcome }}' = success ] && scripts/prune-cache.sh downloads-${{ runner.arch }}-
-          exit 0
       - name: Disk usage
         if: always()
         run: |
