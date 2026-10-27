@@ -190,6 +190,10 @@ make package ARCHIVES=emulators   # or libraries, subsystem
 make python-bindings
 ```
 
+CI caches are keyed by architecture and the `coralnpu` revision, saved once by
+successful non-PR builds and left to GitHub's eviction; workflows have no
+`actions: write`. To clear them by hand: `gh cache delete --all`.
+
 On ARM64, copy `fixtures/*.elf` from the x86_64 fixture CI artifact before
 packaging. The upstream guest compiler is x86_64
 only. The ARM64 image builds pinned firtool 1.114.0 from source because

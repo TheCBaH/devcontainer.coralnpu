@@ -6,7 +6,6 @@ on:
 permissions:
   contents: read
   packages: write
-  actions: write
 concurrency:
   group: trace-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
@@ -47,10 +46,8 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .cache/actions
-          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-${{ github.run_id }}
-          restore-keys: |
-            actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}-
-            actions-${{ runner.arch }}-
+          key: actions-${{ runner.arch }}-${{ steps.cache-id.outputs.coralnpu }}
+          restore-keys: actions-${{ runner.arch }}-
       - name: Test trace selection
         run: ${{ steps.container.outputs.exec }} make trace-tests
   vcd-smoke:
