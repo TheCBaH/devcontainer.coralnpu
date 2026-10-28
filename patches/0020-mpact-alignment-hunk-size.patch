@@ -1,13 +1,13 @@
 diff --git a/third_party/patches/mpact_riscv_zvt_alignment.patch b/third_party/patches/mpact_riscv_zvt_alignment.patch
-index 533ab48d..c7116d37 100644
+index 8272edf4..4b335296 100644
 --- a/third_party/patches/mpact_riscv_zvt_alignment.patch
 +++ b/third_party/patches/mpact_riscv_zvt_alignment.patch
-@@ -245,7 +245,7 @@ index 9a7965b..f7fa184 100644
-    matrix_state->set_tile_m(std::min(
-        {matrix_state->tile_m(), kLmulElements, kEffectiveTileElements}));
-  }
--@@ -207,33 +234,85 @@ void RiscVZvtMsetTm(const Instruction* inst) {
-+@@ -207,33 +234,80 @@ void RiscVZvtMsetTm(const Instruction* inst) {
-      kTileM = std::min<uint32_t>(kRs1, kBound);
+@@ -767,7 +767,7 @@ index 9a7965b..1c70e2e 100644
+    CHECK(row >= 0 && row < kEffectiveTileEdge) << "row out of bounds";
+    CHECK(col >= 0 && col < kEffectiveTileEdge) << "col out of bounds";
+    switch (tile_element_width) {
+-@@ -89,11 +567,29 @@ uint64_t LoadTileBits(RiscVZvtMatrixState* matrix_state, int kTile, int row,
++@@ -89,11 +567,28 @@ uint64_t LoadTileBits(RiscVZvtMatrixState* matrix_state, int kTile, int row,
     }
-    matrix_state->set_tile_m(kTileM);
+  }
+  
