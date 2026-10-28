@@ -240,9 +240,8 @@ provide independent scalar expected results for these operations.
 The pinned M4 binary decoder omits M3's BF16-conversion instruction group;
 the wrapper applies `provenance/mpact-patches/m4-bf16-decoder.patch` to restore
 that inherited instruction. The FP/BF16 example tests this path on both models.
-`provenance/mpact-patches/matrix-altfmt.patch` also permits the matrix-specific
-alternate-format bit during MPACT matrix configuration and guards invalid
-element widths. The BF16 matrix case exercises configuration and arithmetic.
+Upstream MPACT accepts the matrix alternate-format bit for SEW ≤ 16 and sets
+vill above it; the BF16 matrix case exercises configuration and arithmetic.
 `provenance/0009-vme-retirement-interlock.patch` prevents tile-store
 completions from colliding with staggered matrix-result retirement in VME.
 The accumulation, configuration-readback and program-exit checks cover this

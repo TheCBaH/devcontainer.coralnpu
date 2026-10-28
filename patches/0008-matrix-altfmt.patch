@@ -1,7 +1,0 @@
---- a/third_party/patches/patches.bzl
-+++ b/third_party/patches/patches.bzl
-@@ -29,3 +29,3 @@
-     "@coralnpu_hw//third_party/patches:" + patch
-     for patch in MPACT_RISCV_PATCH_FILES
--]
-+] + ["@coralnpu_hw//portable_patches:matrix-altfmt.patch"]

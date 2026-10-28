@@ -217,10 +217,9 @@ diff --git a/third_party/patches/patches.bzl b/third_party/patches/patches.bzl
 index 1335f1ce..e49fa880 100644
 --- a/third_party/patches/patches.bzl
 +++ b/third_party/patches/patches.bzl
-@@ -28,4 +28,5 @@ MPACT_RISCV_PATCHES = [
+@@ -28,4 +28,4 @@ MPACT_RISCV_PATCHES = [
  ] + [
      "@coralnpu_hw//third_party/patches:" + patch
      for patch in MPACT_RISCV_PATCH_FILES
--] + ["@coralnpu_hw//portable_patches:matrix-altfmt.patch"]
-+] + ["@coralnpu_hw//portable_patches:matrix-altfmt.patch",
-+     "@coralnpu_hw//portable_patches:htif-exit-status.patch"]
+-]
++] + ["@coralnpu_hw//portable_patches:htif-exit-status.patch"]
