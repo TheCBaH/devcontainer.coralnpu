@@ -8,10 +8,10 @@ static bool Configure(uint32_t widen, uint32_t k, uint32_t sew) {
   // VME requires LMUL4 for FP32 and LMUL2 plus altfmt for BF16.
   uint32_t lmul = widen == 1 ? 2 : widen == 2 ? 1 : 0;
   uint32_t vtype = 0xc0 | (sew << 3) | lmul | (widen == 2 ? 0x100 : 0);
-  asm volatile(".insn r 0x57, 7, 0x41, x0, %0, %1"
+  asm volatile(".insn r 0x57, 7, 0x42, x0, %0, %1"
                : : "r"(mtype), "r"(vtype) : "memory");
   uint32_t tn, actual;
-  asm volatile(".insn r 0x57, 7, 0x42, %0, %1, x0"
+  asm volatile(".insn r 0x57, 7, 0x44, %0, %1, x0"
                : "=r"(tn) : "r"(2u) : "memory");
   asm volatile("csrr %0, 0xc23" : "=r"(actual));
   return tn == 2 && actual == mtype;
