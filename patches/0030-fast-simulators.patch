@@ -1,0 +1,82 @@
+diff --git a/rules/chisel.bzl b/rules/chisel.bzl
+index 5a653de..e91d2a7 100644
+--- a/rules/chisel.bzl
++++ b/rules/chisel.bzl
+@@ -215,3 +215,16 @@ def chisel_cc_library(
+         vopts = vopts + ["--pins-bv", "2"],
+         systemc = False,
+     )
++
++    # SystemC output for the fastest simulation: no trace code, and no assertions, including the
++    # firtool $error/$fatal checks that --no-assert leaves in place.
++    verilator_cc_library(
++        name = "{}_fast".format(name),
++        module = ":{}_verilog".format(name),
++        module_top = module_name,
++        tags = tags,
++        visibility = ["//visibility:public"],
++        vopts = vopts + ["--pins-bv", "2", "--no-assert", "-DSTOP_COND=0", "-DASSERT_VERBOSE_COND=0"],
++        systemc = True,
++        trace = False,
++    )
+diff --git a/tests/verilator_sim/BUILD b/tests/verilator_sim/BUILD
+index 5324d79..06ba2b9 100644
+--- a/tests/verilator_sim/BUILD
++++ b/tests/verilator_sim/BUILD
+@@ -356,3 +356,33 @@ cc_test(
+ )
+ 
+ collect_coralnpu_elfs()
++
++# The standalone simulators on the chisel_cc_library _fast models: no trace code or assertions.
++[
++    (
++        cc_library(
++            name = name + "_fast_tb",
++            srcs = ["@coralnpu_hw//hdl/chisel/src/coralnpu:V{}_parameters.h".format(top)] +
++                   CORE_MINI_AXI_TB_CC_LIBRARY_COMMON_SRCS,
++            hdrs = ["coralnpu/core_mini_axi_tb.h"],
++            defines = ["VERILATOR_MODEL=V" + top, "SYSC_TB_NO_TRACE"] + (["HIGHMEM_RTL"] if highmem else []),
++            deps = ["//hdl/chisel/src/coralnpu:{}_cc_library_fast".format(name)] +
++                   CORE_MINI_AXI_TB_CC_LIBRARY_COMMON_DEPS,
++        ),
++        cc_binary(
++            name = name + "_fast_sim",
++            srcs = ["coralnpu/core_mini_axi_sim.cc"],
++            visibility = ["//visibility:public"],
++            deps = [":{}_fast_tb".format(name)] + CORE_MINI_AXI_SIM_CC_BINARY_COMMON_DEPS,
++        ),
++    )
++    for name, top, highmem in [
++        ("core_mini_axi", "CoreMiniAxi", False),
++        ("rvv_core_mini_axi", "RvvCoreMiniAxi", False),
++        ("vme_core_mini_axi", "VmeCoreMiniAxi", False),
++        ("core_mini_highmem_axi", "CoreMiniHighmemAxi", True),
++        ("rvv_core_mini_highmem_axi", "RvvCoreMiniHighmemAxi", True),
++        ("core_mini_itcm512kb_dtcm512kb_axi", "CoreMini_ITCM512KB_DTCM512KBAxi", True),
++        ("rvv_core_mini_itcm512kb_dtcm512kb_axi", "RvvCoreMini_ITCM512KB_DTCM512KBAxi", True),
++    ]
++]
+diff --git a/tests/verilator_sim/sysc_tb.h b/tests/verilator_sim/sysc_tb.h
+index 6aa8edb..d0f2b93 100644
+--- a/tests/verilator_sim/sysc_tb.h
++++ b/tests/verilator_sim/sysc_tb.h
+@@ -227,6 +227,10 @@ struct Sysc_tb : public sc_module {
+   template <typename T>
+   bool trace(T* design, const char *name = "", const std::vector<std::string> &select = {},
+              bool catalog = false, int fd = -1) {
++#ifdef SYSC_TB_NO_TRACE
++    fprintf(stderr, "trace: this simulator is built without trace code\n");
++    return false;
++#else
+     std::string path;
+     if (fd >= 0) {
+ #ifdef VM_TRACE_VCD
+@@ -299,6 +303,7 @@ struct Sysc_tb : public sc_module {
+       tf_ = nullptr;
+     }
+     return true;
++#endif
+   }
+ 
+   static char *get_name(char *s) {

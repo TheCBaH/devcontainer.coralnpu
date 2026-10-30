@@ -25,8 +25,12 @@ check() {
   example=${*: -1}
   echo "CORAL_RESULT $binary ${example##*/} pass"
 }
+# Runs an RTL check on a simulator and on its _fast twin, which must agree.
 rtl() {
   check "$1" "$root/bin/$2" --cycles="${4:-1000000}" --binary="$root/examples/$3"
+  if [ -x "$root/bin/${2%_sim}_fast_sim" ]; then
+    check "$1" "$root/bin/${2%_sim}_fast_sim" --cycles="${4:-1000000}" --binary="$root/examples/$3"
+  fi
 }
 mpact() {
   check "$1" "$root/bin/$2" --semihost_htif --exit_on_ebreak --max_instructions=100000000 "$root/examples/$3"
@@ -73,6 +77,18 @@ for sim in core_mini_axi_sim rvv_core_mini_axi_sim vme_core_mini_axi_sim; do
   rtl CORAL_X0_LOAD_PASS "$sim" x0_load.elf
   rtl CORAL_TRAP_ADDRESS_PASS "$sim" trap_address.elf
   rtl CORAL_MEMORY_PASS "$sim" memory.elf
+done
+for path in "$root"/bin/*_fast_sim; do
+  for flag in --trace "--trace_catalog=$PWD/fast.fst"; do
+    set +e
+    "$path" --cycles=1000000 "$flag" --binary="$root/examples/scalar.elf" > fast-trace.log 2>&1
+    status=$?
+    set -e
+    cat fast-trace.log
+    test "$status" -eq 126
+    grep -q 'built without trace code' fast-trace.log
+  done
+  echo "Tracing refused: ${path##*/}"
 done
 for sim in coralnpu_v2_sim coralnpu_m3_sim coralnpu_m4_sim; do
   mpact CORAL_SCALAR_PASS "$sim" scalar.elf
@@ -122,7 +138,7 @@ for path in "$root"/bin/*; do
     *highmem*|*512kb*) elf=uninit_tcm_tcm512k.elf ;;
     *) elf=uninit_tcm.elf ;;
   esac
-  rtl "CORAL_UNINIT_TCM_PASS $zeros" "$sim" "$elf"
+  check "CORAL_UNINIT_TCM_PASS $zeros" "$root/bin/$sim" --cycles=1000000 --binary="$root/examples/$elf"
   ones=$(uninit "$sim" "$elf" +verilator+rand+reset+1)
   seed7=$(uninit "$sim" "$elf" +verilator+rand+reset+2 +verilator+seed+7)
   again=$(uninit "$sim" "$elf" +verilator+rand+reset+2 +verilator+seed+7)

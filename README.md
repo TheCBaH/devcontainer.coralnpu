@@ -12,7 +12,7 @@ architecture (`x86_64`, `aarch64`) and `SHA256SUMS`:
 
 | Archive | Contents |
 | --- | --- |
-| `coralnpu-emulators-linux-<arch>.tar.gz` | MPACT V2/M3/M4 and seven standalone Verilator RTL simulators |
+| `coralnpu-emulators-linux-<arch>.tar.gz` | MPACT V2/M3/M4 and seven standalone Verilator RTL simulators, each also as a `_fast` build |
 | `coralnpu-subsystem-linux-<arch>.tar.gz` | Optional full-subsystem `chip_verilator` simulators and loader |
 
 ```sh
@@ -23,6 +23,7 @@ bin/coralnpu_v2_sim --semihost_htif --exit_on_ebreak examples/scalar.elf
 bin/coralnpu_m3_sim --semihost_htif --exit_on_ebreak examples/rvv_fp.elf
 bin/coralnpu_m4_sim --semihost_htif --exit_on_ebreak examples/matrix.elf
 bin/vme_core_mini_axi_sim --binary=examples/matrix.elf
+bin/rvv_core_mini_axi_fast_sim --binary=examples/rvv_fp.elf
 bin/core_mini_highmem_axi_sim --binary=examples/memory_tcm1m.elf --cycles=20000000
 bin/rvv_core_mini_itcm512kb_dtcm512kb_axi_sim --binary=examples/rvv_tcm512k.elf
 bash smoke.sh
@@ -81,6 +82,16 @@ Mini-buffer traces report zero instruction and result fields. `linker/` holds
 the generated linker layouts for 8/32 KiB,
 512/512 KiB and 1/1 MiB, matching the examples; upstream's template is
 `provenance/coralnpu_tcm.ld.tpl`.
+
+Each standalone RTL simulator `<name>_sim` also ships as `<name>_fast_sim`:
+the same hardware configuration (it shares the manifest record and ID),
+verilated without trace code and without assertions (`--no-assert`, plus
+`STOP_COND=0` and `ASSERT_VERBOSE_COND=0` for the firtool `$error`/`$fatal`
+checks). It runs about 10-15% faster on the scalar cores and about twice as
+fast on the RVV cores, at about half the size, but it does not report RTL
+invariant violations, and `--trace`, `--trace_file`, `--trace_fd` and
+`--trace_catalog` exit 126. Capture waveforms, or confirm a suspicious
+result, with the plain simulator. `smoke.sh` runs the RTL fixture checks on both.
 
 The subsystem archive packages `//fpga:build_chip_verilator_{vector,matrix}_{normal,highmem}`
 as `bin/Vchip_<variant>`: 4 MiB SRAM, 32 KiB ROM, peripherals and the

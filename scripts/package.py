@@ -9,7 +9,7 @@ import subprocess
 import sys
 import tarfile
 
-from build import ROOT, SOURCE, VME_TESTS, RVV_MATMUL_TESTS, VCD_SIMULATORS, run
+from build import ROOT, SOURCE, VME_TESTS, RVV_MATMUL_TESTS, VCD_SIMULATORS, FAST_SIMULATORS, run
 import manifest
 import validate_manifest
 import zvt_export
@@ -187,7 +187,7 @@ def configurations(kind, outputs, revision):
     records = {}
     for name, path in outputs["files"].items():
         model = outputs["elaboration"].get(name)
-        if name in VCD_SIMULATORS:
+        if name in VCD_SIMULATORS or name in FAST_SIMULATORS:
             continue
         if kind == "emulators" and name in manifest.MPACT:
             record = manifest.mpact(name, revision)
@@ -196,7 +196,7 @@ def configurations(kind, outputs, revision):
         else:
             record = manifest.subsystem(name, model, revision)
         records[name] = manifest.finalize(record)
-    for name, base in VCD_SIMULATORS.items():
+    for name, base in {**VCD_SIMULATORS, **FAST_SIMULATORS}.items():
         if name in outputs["files"]:
             records[name] = records[base]
     return records
@@ -255,7 +255,7 @@ def package(kind):
     if kind == "emulators":
         (bundle / "catalogs").mkdir()
         for _, _, filename, relative in placed:
-            if filename in manifest.MPACT:
+            if filename in manifest.MPACT or filename in FAST_SIMULATORS:
                 continue
             catalog = "catalogs/" + filename + (".catalog.vcd" if filename in VCD_SIMULATORS else ".catalog.fst")
             run(str(bundle / relative), "--trace_catalog=" + str(bundle / catalog), cwd=ROOT)

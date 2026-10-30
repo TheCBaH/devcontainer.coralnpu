@@ -50,6 +50,9 @@ EMULATORS = {
 }
 # The VCD simulators are the same hardware configuration as these, traced in another format.
 VCD_SIMULATORS = {"core_mini_axi_vcd_sim": "core_mini_axi_sim"}
+# The _fast simulators are these hardware configurations without trace code or assertions.
+FAST_SIMULATORS = {name[:-len("_sim")] + "_fast_sim": name for name, (_, library, _) in EMULATORS.items() if library}
+EMULATORS.update({name: ("//tests/verilator_sim:" + name, None, None) for name in FAST_SIMULATORS})
 SUBSYSTEMS = {
     "chip_verilator_" + variant: ("//fpga:build_chip_verilator_" + variant, variant)
     for variant in ("vector_normal", "vector_highmem", "matrix_normal", "matrix_highmem")
