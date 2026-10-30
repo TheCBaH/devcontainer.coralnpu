@@ -1,0 +1,12 @@
+diff --git a/tests/verilator_sim/sysc_tb.h b/tests/verilator_sim/sysc_tb.h
+index 7490678..6aa8edb 100644
+--- a/tests/verilator_sim/sysc_tb.h
++++ b/tests/verilator_sim/sysc_tb.h
+@@ -145,7 +145,6 @@ struct Sysc_tb : public sc_module {
+     clock_(clock);
+ 
+     // Verilated::commandArgs(argc, argv);
+-    tf_ = new TraceFile;
+   }
+ 
+   ~Sysc_tb() {
