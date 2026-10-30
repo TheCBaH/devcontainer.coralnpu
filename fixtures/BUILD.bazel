@@ -79,14 +79,6 @@ TCM_LAYOUTS = {
     ("rvv_fp", []),
 ]]
 
-coralnpu_v2_binary(
-    name = "library",
-    srcs = ["library.cc"],
-    copts = ["-march=rv32imf_zicsr_zifencei_zbb"],
-    enable_vmem = False,
-    stack_size_bytes = 2048,
-)
-
 [coralnpu_v2_binary(
     name = "subsystem_dma" + suffix,
     srcs = ["subsystem_dma.cc"],

@@ -1,5 +1,5 @@
 .PHONY: submodule prepare fixtures build python-bindings test package ci rtl-tests dma-tests trace-tests
-ARCHIVES ?= emulators libraries subsystem
+ARCHIVES ?= emulators subsystem
 submodule:
 	git submodule update --init --recursive --depth 1
 prepare: submodule

@@ -13,7 +13,7 @@
       "required": ["name", "kind", "wrapper_repository", "wrapper_revision", "host"],
       "properties": {
         "name": {"type": "string"},
-        "kind": {"enum": ["emulators", "subsystem", "libraries"]},
+        "kind": {"enum": ["emulators", "subsystem"]},
         "wrapper_repository": {"type": "string"},
         "wrapper_revision": {"$ref": "#/$defs/revision"},
         "host": {"$ref": "#/$defs/host"},
@@ -137,7 +137,7 @@
       "required": ["backend", "interface", "top_level", "timing_scope", "boot", "termination", "runtime_overrides"],
       "properties": {
         "backend": {"enum": ["mpact", "verilator"]},
-        "interface": {"enum": ["standalone-cli", "subsystem-cli", "shared-library"]},
+        "interface": {"enum": ["standalone-cli", "subsystem-cli"]},
         "top_level": {"type": "string"},
         "timing_scope": {
           "description": "functional: instruction-accurate, no cycle timing. cycle-rtl-core: cycle-based RTL core with untimed host models. cycle-rtl-subsystem: cycle-based RTL of the SoC subsystem.",
@@ -315,7 +315,7 @@
       "properties": {
         "path": {"type": "string"},
         "configuration_id": {"type": "string"},
-        "kind": {"enum": ["executable", "shared-library"]},
+        "kind": {"enum": ["executable"]},
         "sha256": {"$ref": "#/$defs/sha256"},
         "host": {"$ref": "#/$defs/host"},
         "abi": {"type": ["string", "null"]},

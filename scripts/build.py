@@ -16,7 +16,7 @@ VME_TESTS = ("vme_altfmt_test", "vme_decode_test", "vme_load_store_test", "vme_m
              "vme_mstatus_ms_test", "vme_transpose_test", "vme_vset_mtype_reset_test")
 RVV_MATMUL_TESTS = ("rvv_matmul_fp32", "rvv_matmul_int8", "rvv_matmul_bf16")
 FIXTURES = ("batch_limits", "x0_load", "x0_load_tcm512k", "scalar", "rvv", "rvv_fp", "matrix", "memory", "memory_tcm512k", "memory_tcm1m",
-            "scalar_tcm512k", "rvv_tcm512k", "rvv_fp_tcm512k", "library", "subsystem_dma",
+            "scalar_tcm512k", "rvv_tcm512k", "rvv_fp_tcm512k", "subsystem_dma",
             "subsystem_dma_tcm1m", "trap_address", "trap_address_tcm512k", "exit_status", "exit_status_tcm512k", "uninit_tcm", "uninit_tcm_tcm512k", "host_ram", "host_ram_tcm512k", "host_io", "host_io_tcm512k", "external_payload",
             "vme_external_matmul", *VME_TESTS, *RVV_MATMUL_TESTS)
 # Linker layouts shipped with the archives, taken from these fixtures.
@@ -50,13 +50,6 @@ EMULATORS = {
 }
 # The VCD simulators are the same hardware configuration as these, traced in another format.
 VCD_SIMULATORS = {"core_mini_axi_vcd_sim": "core_mini_axi_sim"}
-LIBRARIES = {
-    "libcoralnpu_simulator.so": ("//hw_sim:libcoralnpu_simulator.so", "core_mini_axi_cc_library", "CoreMiniAxi"),
-    "libcoralnpu_simulator_rvv.so": ("//hw_sim:libcoralnpu_simulator_rvv.so", "rvv_core_mini_axi_cc_library",
-                                     "RvvCoreMiniAxi"),
-    "libcoralnpu_simulator_vme.so": ("//hw_sim:libcoralnpu_simulator_vme.so", "vme_core_mini_axi_cc_library",
-                                     "VmeCoreMiniAxi"),
-}
 SUBSYSTEMS = {
     "chip_verilator_" + variant: ("//fpga:build_chip_verilator_" + variant, variant)
     for variant in ("vector_normal", "vector_highmem", "matrix_normal", "matrix_highmem")
@@ -216,7 +209,7 @@ def main():
         output_base = Path(run("bazel", "--output_user_root=" + str(ROOT / ".cache/bazel"),
                                "info", "output_base"))
         objdump, = (output_base / "external").glob("*toolchain_coralnpu_v2/bin/riscv64-unknown-elf-objdump")
-        for name in ("x0_load", "x0_load_tcm512k", "scalar", "scalar_tcm512k", "memory", "memory_tcm512k", "memory_tcm1m", "library", "external_payload"):
+        for name in ("x0_load", "x0_load_tcm512k", "scalar", "scalar_tcm512k", "memory", "memory_tcm512k", "memory_tcm1m", "external_payload"):
             disassembly = run(str(objdump), "-d", str(ROOT / "fixtures" / (name + ".elf")))
             vector = re.search(r"^\s*[0-9a-f]+:\s+[0-9a-f]+\s+(v\S+)", disassembly, re.MULTILINE)
             if vector:
@@ -226,8 +219,6 @@ def main():
         for kind in kinds:
             if kind == "emulators":
                 outputs = build_cores(EMULATORS)
-            elif kind == "libraries":
-                outputs = build_cores(LIBRARIES)
             elif kind == "subsystem":
                 outputs = build_subsystems()
             else:

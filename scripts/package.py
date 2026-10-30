@@ -18,7 +18,6 @@ SYSTEM = re.compile(r"^(lib(c|m|pthread|dl|rt|resolv|util)\.so\.|ld-linux)")
 ARCH = {"x86_64": "x86_64", "aarch64": "aarch64"}[platform.machine()]
 ARCHIVES = {
     "emulators": "coralnpu-emulators-linux-",
-    "libraries": "coralnpu-simulator-libraries-linux-",
     "subsystem": "coralnpu-subsystem-linux-",
 }
 # Example ELF: (success marker, configurations it runs on, linker layout).
@@ -85,10 +84,6 @@ EXAMPLES = {
                                                      "rvv-core-mini-highmem-axi"], "itcm512k_dtcm512k.ld"),
         "memory_tcm1m.elf": ("CORAL_MEMORY_PASS", ["core-mini-highmem-axi", "rvv-core-mini-highmem-axi"],
                              "itcm1m_dtcm1m.ld"),
-    },
-    "libraries": {
-        "library.elf": ("CORAL_LIBRARY_PASS", ["library-core-mini-axi", "library-rvv-core-mini-axi",
-                                               "library-vme-core-mini-axi"], "itcm8k_dtcm32k.ld"),
     },
     "subsystem": {
         "subsystem_dma.elf": ("CORAL_SUBSYSTEM_DMA_PASS", ["subsystem-vector-normal", "subsystem-matrix-normal"],
@@ -198,8 +193,6 @@ def configurations(kind, outputs, revision):
             record = manifest.mpact(name, revision)
         elif kind == "emulators":
             record = manifest.standalone(name, model, model["parameters_header"], revision)
-        elif kind == "libraries":
-            record = manifest.library(name, model, model["parameters_header"], revision)
         else:
             record = manifest.subsystem(name, model, revision)
         records[name] = manifest.finalize(record)
@@ -214,7 +207,7 @@ def artifact(bundle, relative, record, kind, runtime_files):
     entry = {
         "path": relative,
         "configuration_id": record["id"],
-        "kind": "shared-library" if kind == "libraries" else "executable",
+        "kind": "executable",
         "sha256": manifest.sha256(path),
         "host": host(),
         "abi": None,
@@ -223,13 +216,6 @@ def artifact(bundle, relative, record, kind, runtime_files):
             ["--load_elf=<elf>"] if kind == "subsystem" else ["--binary=<elf>"])},
         "runtime_files": runtime_files,
     }
-    if kind == "libraries":
-        entry["abi"] = ("C++17 Itanium ABI against libstdc++ (_GLIBCXX_USE_CXX11_ABI=1); "
-                        "extern \"C\" CoralNPUSimulator* coralnpu_simulator_verilator_create(void)")
-        entry["launch"] = {"method": "dlopen-or-link",
-                           "entry_points": ["coralnpu_simulator_verilator_create",
-                                            "coralnpu_simulator_verilator_create_with_options"],
-                           "headers": ["include/hw_sim/coralnpu_simulator.h", "include/hw_sim/mailbox.h"]}
     return entry
 
 
@@ -247,17 +233,14 @@ def package(kind):
     records = configurations(kind, outputs, revision)
     placed = []
     for filename, source in outputs["files"].items():
-        if kind == "libraries":
-            relative = "lib/" + filename
-        elif kind == "subsystem":
+        if kind == "subsystem":
             relative = SUBSYSTEM_BINARY + filename.split("chip_verilator_")[1]
         else:
             relative = "bin/" + filename
         shutil.copy2(source, bundle / relative)
         (bundle / relative).chmod(0o755)
         placed.append((bundle / relative, source, filename, relative))
-    libraries = bundle_libraries(bundle, [(p, s) for p, s, _, _ in placed],
-                                 "$ORIGIN" if kind == "libraries" else "$ORIGIN/../lib")
+    libraries = bundle_libraries(bundle, [(p, s) for p, s, _, _ in placed], "$ORIGIN/../lib")
     output_root = copy_licenses(bundle)
     copy_provenance(bundle)
     for example in EXAMPLES[kind]:
@@ -290,21 +273,6 @@ def package(kind):
         shutil.copy2(ROOT / "scripts/smoke-vcd.sh", bundle / "smoke-vcd.sh")
         shutil.copy2(ROOT / "scripts/matrix-memory.sh", bundle / "matrix-memory.sh")
         shutil.copy2(ROOT / "scripts/mpact-limits.sh", bundle / "mpact-limits.sh")
-    elif kind == "libraries":
-        include = bundle / "include/hw_sim"
-        include.mkdir(parents=True)
-        for header in ("coralnpu_simulator.h", "mailbox.h"):
-            shutil.copy2(SOURCE / "hw_sim" / header, include / header)
-        helpers = bundle / "examples/tests/verilator_sim"
-        helpers.mkdir(parents=True)
-        for source in ("elf.h", "elf.cc"):
-            shutil.copy2(SOURCE / "tests/verilator_sim" / source, helpers / source)
-        shutil.copy2(ROOT / "examples/library_example.cc", bundle / "examples/library_example.cc")
-        run("clang++", "-std=c++17", "-O2", "-I", str(bundle / "include"), "-I", str(bundle / "examples"),
-            "-o", str(bundle / "examples/library_example"), str(bundle / "examples/library_example.cc"),
-            str(helpers / "elf.cc"), "-ldl", cwd=ROOT)
-        run("patchelf", "--set-rpath", "$ORIGIN/../lib", str(bundle / "examples/library_example"), cwd=ROOT)
-        shutil.copy2(ROOT / "scripts/smoke-libraries.sh", bundle / "smoke.sh")
     else:
         tools = bundle / "tools"
         tools.mkdir()
@@ -318,7 +286,7 @@ def package(kind):
         shutil.copy2(outputs["runtime"]["grey_bars_320x240.raw"], bundle / "share/grey_bars_320x240.raw")
         shutil.copy2(ROOT / "scripts/smoke-subsystem.sh", bundle / "smoke.sh")
         runtime = ["tools/loader.py", "tools/spi_driver.py", "tools/elftools", "share/grey_bars_320x240.raw"]
-    for path in [*bundle.glob("bin/*"), *bundle.glob("lib/*"), *bundle.glob("examples/library_example")]:
+    for path in [*bundle.glob("bin/*"), *bundle.glob("lib/*")]:
         symbols = run("readelf", "--version-info", str(path), cwd=ROOT)
         for major, minor in re.findall(r"GLIBC_(\d+)\.(\d+)", symbols):
             if (int(major), int(minor)) > tuple(map(int, manifest.MINIMUM_GLIBC.split("."))):

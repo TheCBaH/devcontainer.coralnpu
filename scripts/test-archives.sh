@@ -22,7 +22,7 @@ for archive in "${archives[@]}"; do
         mkdir -p /tmp/relocated
         tar -xzf "/archives/$ARCHIVE" -C /tmp/relocated
         bundle=/tmp/relocated/${ARCHIVE%.tar.gz}
-        for binary in "$bundle"/bin/* "$bundle"/lib/libcoralnpu_simulator*.so "$bundle"/examples/library_example; do
+        for binary in "$bundle"/bin/*; do
           [ -e "$binary" ] || continue
           echo "Runtime dependencies: $binary"
           if output=$(ldd "$binary" 2>&1); then

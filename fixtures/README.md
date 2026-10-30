@@ -49,10 +49,7 @@ upstream `coralnpu_v2_binary` layouts for 8/32 KiB, 512/512 KiB and 1/1 MiB;
 any non-default size moves DTCM to `0x100000`. An ELF linked for a larger
 layout does not fit a smaller simulator.
 
-The library archive has `library.elf`: the host writes four words at the start
-and end of the library's 1 GiB DDR model, the guest sums them, writes the sums
-to DDR, DTCM and the mailbox, and waits in `wfi`; `examples/library_example`
-checks all three (`CORAL_LIBRARY_PASS`). The subsystem archive has
+The subsystem archive has
 `subsystem_dma.elf` and `subsystem_dma_tcm1m.elf`: the guest programs the DMA
 engine at `0x40050000` to copy SRAM to DTCM, DTCM to SRAM and SRAM to ITCM,
 and prints `CORAL_SUBSYSTEM_DMA_PASS` on UART1.
@@ -164,8 +161,7 @@ for the base scalar RTL and MPACT V2. Its source is included under
 `provenance/fixtures/external_payload.cc`.
 
 This demonstrates a large **data** payload with small local memories. Code
-executes from ITCM. External RAM is a functional SystemC memory model;
-the library bundle's separate DDR model is described below.
+executes from ITCM. External RAM is a functional SystemC memory model.
 
 ## Highmem and initialized external payloads
 
@@ -188,11 +184,8 @@ last external RAM word, and prints `CORAL_HOST_RAM_PASS`. Both exit 0.
 Use `rvv_core_mini_highmem_axi_sim` for the same checks on RVV highmem RTL.
 
 Highmem provides 1 MiB ITCM and 1 MiB DTCM, with DTCM at `0x100000`.
-Standalone external memory is a 4 MiB SystemC RAM model at `0x20000000`.
-The separate simulator-library bundle provides the 1 GiB DDR model at
-`0x80000000`; run its `examples/library_example` harness with
-`examples/library.elf` as described above. These are functional memory
-models. The highmem example fetches code from ITCM and uses external RAM
+Standalone external memory is a 4 MiB SystemC RAM model at `0x20000000`,
+a functional memory model. The highmem example fetches code from ITCM and uses external RAM
 for data.
 
 ## Expected calculations

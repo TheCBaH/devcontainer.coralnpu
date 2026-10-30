@@ -44,13 +44,6 @@ MPACT = {
     "coralnpu_m3_sim": ("mpact-m3", "m3"),
     "coralnpu_m4_sim": ("mpact-m4", "m4"),
 }
-LIBRARIES = {
-    "libcoralnpu_simulator.so": ("library-core-mini-axi", "scalar", "core_mini_axi_cc_library", "CoreMiniAxi"),
-    "libcoralnpu_simulator_rvv.so": ("library-rvv-core-mini-axi", "rvv", "rvv_core_mini_axi_cc_library",
-                                     "RvvCoreMiniAxi"),
-    "libcoralnpu_simulator_vme.so": ("library-vme-core-mini-axi", "vme", "vme_core_mini_axi_cc_library",
-                                     "VmeCoreMiniAxi"),
-}
 # fpga/BUILD _ALL_CONFIGS: core kind, TCM KiB, configured clock in MHz.
 SUBSYSTEMS = {
     "chip_verilator_vector_normal": ("subsystem-vector-normal", "rvv", 8, 32, 50),
@@ -408,74 +401,6 @@ def mpact(executable, revision):
             "Generation is fixed by the executable; --initial_misa_value does not switch V2 to M3/M4",
         ],
     }
-    return record
-
-
-def library(filename, elaboration, header, revision):
-    name, kind, library_target, module = LIBRARIES[filename]
-    parameters, build_parameters = rtl_build_parameters(elaboration, header)
-    build_parameters["defines"] = {"rvv": ["ENABLE_RVV"], "vme": ["ENABLE_VME"]}.get(kind, [])
-    itcm, dtcm = parameters["itcmSizeKBytes"] * KIB, parameters["dtcmSizeKBytes"] * KIB
-    rtl = "RTL SRAM, cycle-based"
-    record = {
-        "id": "",
-        "name": name,
-        "description": "Shared-library CoralNPUSimulator over the default-TCM " + module + " RTL core with the "
-                       "library's 1 GiB functional DDR backing store",
-        "provenance": provenance("//hw_sim:" + filename, build_parameters, revision),
-        "simulation": {
-            "backend": "verilator",
-            "interface": "shared-library",
-            "top_level": "CoralNPUSimulator over " + module,
-            "timing_scope": "cycle-rtl-core",
-            "clock": {"configured_frequency_mhz": None,
-                      "note": "WaitForTermination timeouts are in simulated cycles"},
-            "boot": {"loader": "Host WriteMem calls for each ELF segment (example uses tests/verilator_sim/elf.h)",
-                     "entry": "Run(start_pc) writes core CSR 0x30004 and releases the core through 0x30000",
-                     "steps": ["coralnpu_simulator_verilator_create()", "WriteMem(segments)", "Run(entry)",
-                               "WaitForTermination(cycles)", "ReadMem/ReadMailbox/ReadCoreState"]},
-            "termination": "WaitForTermination returns true when the core halts or waits in wfi, false after the "
-                           "cycle timeout (default 10000 cycles when the timeout is not positive)",
-            "runtime_overrides": [
-                {"flag": "CoralNPUSimulatorOptions.cycle_callback", "default": None, "changes_configuration": False,
-                 "description": "Host callback every cycle_callback_period cycles"},
-            ],
-        },
-        "isa": rtl_isa(kind, parameters),
-        "memory_regions": [
-            region("itcm", "itcm", 0, itcm, "rtl-sram", "core instruction TCM; host WriteMem through core AXI slave",
-                   access(True, False, True, True, False), rtl,
-                   notes="The LSU raises a store fault for guest stores to ITCM"),
-            region("dtcm", "dtcm", 0x10000, dtcm, "rtl-sram", "core data TCM; host WriteMem through core AXI slave",
-                   access(True, True, None, True, False), rtl),
-            region("core-csr", "csr", 0x30000, 4 * KIB, "register-file", "core AXI slave",
-                   access(None, None, False, True, False), rtl),
-            region("ddr", "ddr", 0x80000000, 1024 * MIB, "host-vector", "core AXI master callbacks; host "
-                   "ReadMem/WriteMem copy directly", access(True, True, None, True, False),
-                   "untimed host buffer; no physical DDR timing",
-                   notes="Library-only functional backing store, absent from the CLI and subsystem simulators"),
-            region("mailbox", "mailbox", 0x20000000, 16, "host-vector", "core AXI master callbacks; host "
-                   "ReadMailbox/WriteMailbox", access(True, True, None, None, False), "untimed",
-                   notes="Every external address outside DDR aliases this 16-byte mailbox by its low 4 bits"),
-        ],
-        "capabilities": {
-            "dma": {"present": False, "type": None, "mmio_base_address": None, "reachable_regions": []},
-            "mmio": [{"name": "core-csr", "base_address": 0x30000, "size_bytes": 4 * KIB,
-                      "description": "Core run control and status"}],
-            "peripherals": ["mailbox"],
-            "external_instruction_fetch": None,
-            "buses": core_buses(parameters),
-            "memory_timing_model": "TCMs are cycle-based RTL SRAM; DDR and mailbox are untimed host callbacks",
-            "waveform_tracing": False,
-            "instruction_trace": False,
-            "guest_output": "Mailbox words and memory read by the host",
-        },
-        "limitations": [
-            "The 1 GiB DDR model belongs to this library interface only and is not a DDR timing model",
-            "Default 8 KiB / 32 KiB TCM wrappers; a highmem linker script does not enlarge them",
-        ],
-    }
-    check_tcm(parameters, itcm, dtcm, name)
     return record
 
 

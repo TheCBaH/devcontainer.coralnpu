@@ -7,13 +7,12 @@ apply only to the disposable `.cache/source` build tree.
 
 ## Download and run
 
-CI artifacts and tagged releases contain three archives per host
+CI artifacts and tagged releases contain two archives per host
 architecture (`x86_64`, `aarch64`) and `SHA256SUMS`:
 
 | Archive | Contents |
 | --- | --- |
 | `coralnpu-emulators-linux-<arch>.tar.gz` | MPACT V2/M3/M4 and seven standalone Verilator RTL simulators |
-| `coralnpu-simulator-libraries-linux-<arch>.tar.gz` | Optional `libcoralnpu_simulator{,_rvv,_vme}.so` with headers and example |
 | `coralnpu-subsystem-linux-<arch>.tar.gz` | Optional full-subsystem `chip_verilator` simulators and loader |
 
 ```sh
@@ -82,12 +81,6 @@ Mini-buffer traces report zero instruction and result fields. `linker/` holds
 the generated linker layouts for 8/32 KiB,
 512/512 KiB and 1/1 MiB, matching the examples; upstream's template is
 `provenance/coralnpu_tcm.ld.tpl`.
-
-The library archive packages the upstream default-TCM `hw_sim` libraries,
-with `include/hw_sim/coralnpu_simulator.h`, a 1 GiB functional DDR backing
-store at `0x80000000` (library only, no timing model) and
-`examples/library_example`, which loads a library with `dlopen`, runs
-`examples/library.elf` and checks DDR, DTCM and mailbox results.
 
 The subsystem archive packages `//fpga:build_chip_verilator_{vector,matrix}_{normal,highmem}`
 as `bin/Vchip_<variant>`: 4 MiB SRAM, 32 KiB ROM, peripherals and the
@@ -186,7 +179,7 @@ Devcontainer CLI configuration is for building containers.
 make fixtures       # x86_64: build the reusable guest ELFs and linker layouts
 make dma-tests      # x86_64: Verilator DMA, TileLink and DDR-path tests
 make package        # build native simulators and create all dist/ archives
-make package ARCHIVES=emulators   # or libraries, subsystem
+make package ARCHIVES=emulators   # or subsystem
 make python-bindings
 ```
 
@@ -212,7 +205,7 @@ Use `make test` on a host with Docker to verify archives in fresh Ubuntu
 24.04 and Debian 13 runtime containers (the subsystem archive in
 `python:3.13-slim-trixie`, for the loader). Tests run without network, source,
 build caches or Bazel runfiles and verify scalar/RVV, vector-FP/BF16, matrix,
-larger-TCM and external-RAM transfers, library DDR/mailbox results, subsystem
+larger-TCM and external-RAM transfers, subsystem
 DMA between SRAM, DTCM and ITCM, and bad inputs. Packaging validates every
 manifest against its schema, IDs, artifact hashes and coverage, and agreement
 with the generated elaboration parameters.
