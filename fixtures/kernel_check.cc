@@ -63,7 +63,12 @@ constexpr double kRtol = 1e-2, kAtol = 1e-2;
 constexpr double kRtol = 1e-2, kAtol = 1e-2;
 #endif
 
-static Elem input_a[kMaxElements], input_b[kMaxElements], weight[kMaxCols];
+static Elem input_a[kMaxElements];
+#if defined(KERNEL_RMS_NORM)
+static Elem weight[kMaxCols];
+#else
+static Elem input_b[kMaxElements];
+#endif
 static Elem output[kMaxElements + kGuard];
 static uint32_t random_state = 42;
 
