@@ -9,9 +9,10 @@ import subprocess
 import sys
 import tarfile
 
-from build import ROOT, SOURCE, VME_TESTS, RVV_MATMUL_TESTS, VCD_SIMULATORS, FAST_SIMULATORS, run
+from build import ROOT, SOURCE, VME_TESTS, RVV_MATMUL_TESTS, KERNEL_TESTS, VCD_SIMULATORS, FAST_SIMULATORS, run
 import manifest
 import validate_manifest
+import kernels
 import zvt_export
 
 SYSTEM = re.compile(r"^(lib(c|m|pthread|dl|rt|resolv|util)\.so\.|ld-linux)")
@@ -37,6 +38,9 @@ EXAMPLES = {
                                  "itcm8k_dtcm32k.ld"),
         **{name + ".elf": ("CORAL_RVV_MATMUL_" + name.rsplit("_", 1)[1].upper() + "_PASS",
                            ["rvv-core-mini-highmem-axi"], "itcm1m_dtcm1m.ld") for name in RVV_MATMUL_TESTS},
+        **{name + ".elf": ("CORAL_" + name.upper() + "_PASS",
+                           ["rvv-core-mini-itcm512kb-dtcm512kb-axi", "rvv-core-mini-highmem-axi"],
+                           "itcm512k_dtcm512k.ld") for name in KERNEL_TESTS},
         "vme_external_matmul.elf": ("CORAL_VME_EXTERNAL_MATMUL_PASS", ["vme-core-mini-axi", "mpact-m4"],
                                     "itcm8k_dtcm32k.ld"),
         "matrix.elf": ("CORAL_MATRIX_PASS", ["vme-core-mini-axi", "mpact-m4"], "itcm8k_dtcm32k.ld"),
@@ -159,7 +163,8 @@ def copy_provenance(bundle):
                     ignore=shutil.ignore_patterns("*.elf", "*.ld"))
     shutil.copytree(ROOT / "mpact-patches", bundle / "provenance/mpact-patches")
     shutil.copytree(SOURCE / "tests/cocotb/vme_test", bundle / "provenance/fixtures/vme_test")
-    for kernel in ("rvv_matmul.cc", "rvv_int8_matmul.cc", "rvv_bf16_matmul.cc"):
+    for kernel in ("rvv_matmul.cc", "rvv_int8_matmul.cc", "rvv_bf16_matmul.cc", "rvv_residual_add.cc",
+                   "rvv_rms_norm.cc", "rvv_tanh_gelu_mul.cc", "rvv_common_vec.h"):
         destination = bundle / "provenance/fixtures/gemma_kernels" / kernel
         destination.parent.mkdir(exist_ok=True)
         shutil.copy2(SOURCE / "tests/cocotb/rvv/ml_ops/gemma_kernels" / kernel, destination)
@@ -250,6 +255,13 @@ def package(kind):
     for layout in {layout for _, _, layout in EXAMPLES[kind].values()}:
         shutil.copy2(ROOT / "fixtures" / layout, bundle / "linker" / layout)
     (bundle / "doc").mkdir()
+    if kind == "emulators":
+        problems = kernels.check(ROOT / "fixtures")
+        if problems:
+            raise SystemExit("kernels/kernels.json: " + "; ".join(problems))
+        (bundle / "kernels").mkdir()
+        shutil.copy2(ROOT / "kernels/kernels.json", bundle / "kernels/kernels.json")
+        (bundle / "doc/kernels.md").write_text(kernels.render())
     for document in DOCS:
         shutil.copy2(ROOT / "doc" / document, bundle / "doc" / document)
     shutil.copy2(ROOT / "README.md", bundle / "README.md")

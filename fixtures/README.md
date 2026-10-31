@@ -27,6 +27,7 @@ timeouts and printed diagnostic output.
 | `rvv.elf` | Sixteen signed int32 vector additions with loads/stores | `CORAL_RVV_PASS` | V2, M3, M4, RVV/VME RTL |
 | `rvv_fp.elf` | Sixteen FP32 vector additions and FP32-to-BF16 conversion | `CORAL_RVV_FP_PASS` | M3, M4, RVV/VME RTL |
 | `rvv_matmul_fp32.elf`, `rvv_matmul_int8.elf`, `rvv_matmul_bf16.elf` | Upstream RVV matrix kernels, external weights/output, scalar numerical checks and output guards | `CORAL_RVV_MATMUL_<format>_PASS` | Highmem RVV RTL |
+| `kernel_<name>_<f32\|bf16>.elf` | Self-checking harnesses for Coral's Gemma RVV kernels (`residual_add`, `rms_norm`, `tanh_gelu_mul`): generated inputs, the unmodified kernel, a double-precision reference with the upstream test's tolerance, and an output guard. What each computes is in `kernels/kernels.json` | `CORAL_KERNEL_<NAME>_<F32\|BF16>_PASS` | 512 KiB and 1 MiB TCM RVV RTL |
 | `vme_external_matmul.elf` | FP32 tiled matrix accumulation with external row/column tile loads/stores, partial tiles and output guards | `CORAL_VME_EXTERNAL_MATMUL_PASS` | M4, VME RTL |
 | `matrix.elf` | Zvt configuration, tile zeroing, signed INT8/FP32/BF16 multiplication and integer accumulation | `CORAL_MATRIX_PASS` | M4, VME RTL |
 | `vme_*_test.elf` | Coral's VME cocotb programs run standalone: every Zvt form except the 64-bit tile loads/stores, on several tiles, plus illegal encodings that must trap | `CORAL_VME_TEST_PASS` (exit 0) | M4, VME RTL |

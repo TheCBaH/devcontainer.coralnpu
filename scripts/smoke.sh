@@ -122,6 +122,11 @@ for sim in core_mini_highmem_axi_sim rvv_core_mini_highmem_axi_sim; do
   rtl CORAL_MEMORY_PASS "$sim" memory_tcm1m.elf 20000000
 done
 for sim in rvv_core_mini_itcm512kb_dtcm512kb_axi_sim rvv_core_mini_highmem_axi_sim; do
+  for elf in "$root"/examples/kernel_*.elf; do
+    name=${elf##*/}
+    name=${name%.elf}
+    rtl "CORAL_${name^^}_PASS" "$sim" "$name.elf" 50000000
+  done
   rtl CORAL_RVV_PASS "$sim" rvv_tcm512k.elf
   rtl CORAL_RVV_FP_PASS "$sim" rvv_fp_tcm512k.elf
 done
