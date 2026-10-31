@@ -1,6 +1,8 @@
+diff --git a/tests/cocotb/rvv/ml_ops/gemma_kernels/rvv_int8_matmul.cc b/tests/cocotb/rvv/ml_ops/gemma_kernels/rvv_int8_matmul.cc
+index cf6849a5..1b238d32 100644
 --- a/tests/cocotb/rvv/ml_ops/gemma_kernels/rvv_int8_matmul.cc
 +++ b/tests/cocotb/rvv/ml_ops/gemma_kernels/rvv_int8_matmul.cc
-@@ -104,74 +104,14 @@
+@@ -104,74 +104,14 @@ void rvv_gemv_int8(const int8_t *__restrict__ A, const int8_t *__restrict__ B,
    }
    // N tail
    while (n < N) {

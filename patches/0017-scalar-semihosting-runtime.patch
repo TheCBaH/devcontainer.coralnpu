@@ -1,6 +1,8 @@
+diff --git a/toolchain/crt/BUILD b/toolchain/crt/BUILD
+index 12fabf7c..0157e696 100644
 --- a/toolchain/crt/BUILD
 +++ b/toolchain/crt/BUILD
-@@ -38,6 +38,7 @@
+@@ -38,6 +38,7 @@ cc_library(
          "coralnpu_start.S",
          "crt.S",
      ],

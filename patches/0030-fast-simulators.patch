@@ -1,5 +1,5 @@
 diff --git a/rules/chisel.bzl b/rules/chisel.bzl
-index 5a653de..e91d2a7 100644
+index 5a653de2..e91d2a7a 100644
 --- a/rules/chisel.bzl
 +++ b/rules/chisel.bzl
 @@ -215,3 +215,16 @@ def chisel_cc_library(
@@ -20,13 +20,13 @@ index 5a653de..e91d2a7 100644
 +        trace = False,
 +    )
 diff --git a/tests/verilator_sim/BUILD b/tests/verilator_sim/BUILD
-index 5324d79..06ba2b9 100644
+index a0f1a203..b085b9cb 100644
 --- a/tests/verilator_sim/BUILD
 +++ b/tests/verilator_sim/BUILD
-@@ -356,3 +356,33 @@ cc_test(
+@@ -354,3 +354,33 @@ cc_test(
+         "@verilator//:libverilator",
+     ],
  )
- 
- collect_coralnpu_elfs()
 +
 +# The standalone simulators on the chisel_cc_library _fast models: no trace code or assertions.
 +[
@@ -58,7 +58,7 @@ index 5324d79..06ba2b9 100644
 +    ]
 +]
 diff --git a/tests/verilator_sim/sysc_tb.h b/tests/verilator_sim/sysc_tb.h
-index 6aa8edb..d0f2b93 100644
+index 6aa8edbf..d0f2b937 100644
 --- a/tests/verilator_sim/sysc_tb.h
 +++ b/tests/verilator_sim/sysc_tb.h
 @@ -227,6 +227,10 @@ struct Sysc_tb : public sc_module {

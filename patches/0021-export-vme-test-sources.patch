@@ -1,10 +1,10 @@
 diff --git a/tests/cocotb/vme_test/BUILD b/tests/cocotb/vme_test/BUILD
-index ca8f6eae..a245c3d2 100644
+index f8d75b77..647e9408 100644
 --- a/tests/cocotb/vme_test/BUILD
 +++ b/tests/cocotb/vme_test/BUILD
-@@ -22,6 +22,9 @@ load(
-     "VCS_TEST_ARGS",
- )
+@@ -16,6 +16,9 @@ load("@coralnpu_hw//third_party/python:requirements.bzl", "requirement")
+ load("//rules:coralflow_test.bzl", "coralflow_test")
+ load("//rules:coralnpu_v2.bzl", "coralnpu_v2_binary")
  
 +# The wrapper's portable fixtures build these programs standalone.
 +exports_files(glob(["*.cc", "*.h"]))

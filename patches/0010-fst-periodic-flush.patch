@@ -1,6 +1,8 @@
+diff --git a/tests/verilator_sim/sysc_tb.h b/tests/verilator_sim/sysc_tb.h
+index c37dd4b0..4d4e870b 100644
 --- a/tests/verilator_sim/sysc_tb.h
 +++ b/tests/verilator_sim/sysc_tb.h
-@@ -258,14 +258,24 @@
+@@ -264,14 +264,24 @@ struct Sysc_tb : public sc_module {
    uint32_t sim_time_ = 0;
    VerilatedFstC *tf_ = nullptr;
  

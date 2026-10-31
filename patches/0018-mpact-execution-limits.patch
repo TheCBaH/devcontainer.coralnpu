@@ -1,9 +1,9 @@
 diff --git a/rules/repo_defs.bzl b/rules/repo_defs.bzl
-index 65c59862..be26156d 100644
+index c77f60b6..03b25d58 100644
 --- a/rules/repo_defs.bzl
 +++ b/rules/repo_defs.bzl
-@@ -111,6 +111,7 @@ def define_mpact_repos():
-             "@coralnpu_hw//third_party/coralnpu_mpact:0008-CoralNPU-M4-alignment.patch",
+@@ -112,6 +112,7 @@ def define_mpact_repos():
+             "@coralnpu_hw//third_party/coralnpu_mpact:0009-Validate-rvv-lsu-legality.patch",
              "@coralnpu_hw//portable_patches:m4-bf16-decoder.patch",
              "@coralnpu_hw//portable_patches:host-contract.patch",
 +            "@coralnpu_hw//portable_patches:execution-limits.patch",

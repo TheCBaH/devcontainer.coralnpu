@@ -1,10 +1,10 @@
 diff --git a/rules/repo_defs.bzl b/rules/repo_defs.bzl
-index 42b57dc9..65c59862 100644
+index 62a69e5a..c77f60b6 100644
 --- a/rules/repo_defs.bzl
 +++ b/rules/repo_defs.bzl
-@@ -110,6 +110,7 @@ def define_mpact_repos():
-             "@coralnpu_hw//third_party/coralnpu_mpact:0007-Add-matrix-tile-DPI-accessors.patch",
+@@ -111,6 +111,7 @@ def define_mpact_repos():
              "@coralnpu_hw//third_party/coralnpu_mpact:0008-CoralNPU-M4-alignment.patch",
+             "@coralnpu_hw//third_party/coralnpu_mpact:0009-Validate-rvv-lsu-legality.patch",
              "@coralnpu_hw//portable_patches:m4-bf16-decoder.patch",
 +            "@coralnpu_hw//portable_patches:host-contract.patch",
          ],
@@ -214,10 +214,10 @@ index 4d4e870b..d263bf65 100644
      }
    }
 diff --git a/third_party/patches/patches.bzl b/third_party/patches/patches.bzl
-index 1335f1ce..e49fa880 100644
+index 0f996b39..2dd4a27e 100644
 --- a/third_party/patches/patches.bzl
 +++ b/third_party/patches/patches.bzl
-@@ -28,4 +28,4 @@ MPACT_RISCV_PATCHES = [
+@@ -29,4 +29,4 @@ MPACT_RISCV_PATCHES = [
  ] + [
      "@coralnpu_hw//third_party/patches:" + patch
      for patch in MPACT_RISCV_PATCH_FILES

@@ -1,19 +1,26 @@
---- a/hdl/chisel/src/coralnpu/RetirementBuffer.scala
-+++ b/hdl/chisel/src/coralnpu/RetirementBuffer.scala
-@@ -799,8 +799,11 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
-         } else {
-           debug.inst(i).bits.tileWrites.get := 0.U.asTypeOf(debug.inst(i).bits.tileWrites.get)
-         }
--        val inst              = instBuffer.io.dataOut(i).inst
--        val isMsetWritesMtype = RvvCompressedInstruction.isMsetWritesMtype(inst)
-+        val isMsetWritesMtype = if (mini) {
-+          false.B
-+        } else {
-+          RvvCompressedInstruction.isMsetWritesMtype(instBuffer.io.dataOut(i).inst)
-+        }
-         debug.inst(i).bits.mtype.get.valid := valid && !resultUpdate(
-           i
-         ).bits.trap && isMsetWritesMtype
+diff --git a/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc b/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
+index 234f14f8..a8f96f82 100644
+--- a/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
++++ b/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
+@@ -204,6 +204,16 @@ void CoreMiniAxi_tb::Connect() {
+ #undef BIND_RB_DEBUG_IO
+ #undef BIND_RB_DEBUG_IO_VECS_8
+ #undef BIND_RB_DEBUG_IO_VEC
++#if (KP_enableVme == true)
++  // SystemC requires sinks for matrix debug outputs, including mini-mode zeros.
++  for (auto* object : core_->get_child_objects()) {
++    const std::string name = object->basename();
++    if (name.find("io_debug_rb_inst_") != 0 ||
++        (name.find("_bits_tileWrites_") == std::string::npos &&
++         name.find("_bits_mtype_") == std::string::npos)) continue;
++    CHECK(debug_io_.BindMatrixPort(object)) << "Unsupported matrix debug port: " << name;
++  }
++#endif
+ #endif
+   core_->io_dm_req_valid(dm_io_.req_valid);
+   core_->io_dm_req_ready(dm_io_.req_ready);
+diff --git a/tests/verilator_sim/coralnpu/core_mini_axi_tb.h b/tests/verilator_sim/coralnpu/core_mini_axi_tb.h
+index 44768381..c143b399 100644
 --- a/tests/verilator_sim/coralnpu/core_mini_axi_tb.h
 +++ b/tests/verilator_sim/coralnpu/core_mini_axi_tb.h
 @@ -19,6 +19,7 @@
@@ -52,22 +59,3 @@
    };
  
    struct DebugModuleIO {
---- a/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
-+++ b/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
-@@ -204,6 +204,16 @@ void CoreMiniAxi_tb::Connect() {
- #undef BIND_RB_DEBUG_IO
- #undef BIND_RB_DEBUG_IO_VECS_8
- #undef BIND_RB_DEBUG_IO_VEC
-+#if (KP_enableVme == true)
-+  // SystemC requires sinks for matrix debug outputs, including mini-mode zeros.
-+  for (auto* object : core_->get_child_objects()) {
-+    const std::string name = object->basename();
-+    if (name.find("io_debug_rb_inst_") != 0 ||
-+        (name.find("_bits_tileWrites_") == std::string::npos &&
-+         name.find("_bits_mtype_") == std::string::npos)) continue;
-+    CHECK(debug_io_.BindMatrixPort(object)) << "Unsupported matrix debug port: " << name;
-+  }
-+#endif
- #endif
-   core_->io_dm_req_valid(dm_io_.req_valid);
-   core_->io_dm_req_ready(dm_io_.req_ready);
