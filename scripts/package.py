@@ -20,6 +20,8 @@ ARCHIVES = {
     "emulators": "coralnpu-emulators-linux-",
     "subsystem": "coralnpu-subsystem-linux-",
 }
+# Reference documents shipped in doc/ of every archive.
+DOCS = ("capabilities.md", "memory-system.md", "subsystem-emulator.md")
 # Example ELF: (success marker, configurations it runs on, linker layout).
 EXAMPLES = {
     "emulators": {
@@ -247,6 +249,9 @@ def package(kind):
         shutil.copy2(ROOT / "fixtures" / example, bundle / "examples" / example)
     for layout in {layout for _, _, layout in EXAMPLES[kind].values()}:
         shutil.copy2(ROOT / "fixtures" / layout, bundle / "linker" / layout)
+    (bundle / "doc").mkdir()
+    for document in DOCS:
+        shutil.copy2(ROOT / "doc" / document, bundle / "doc" / document)
     shutil.copy2(ROOT / "README.md", bundle / "README.md")
     shutil.copy2(ROOT / "fixtures/README.md", bundle / "examples/README.md")
     runtime = []

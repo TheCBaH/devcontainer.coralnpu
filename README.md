@@ -36,6 +36,13 @@ global library-path configuration is required, except that the subsystem
 loader needs `python3`. Keep `bin/` and `lib/` together when relocating an
 archive. Upstream command-line options remain available through `--helpfull`.
 
+## Documentation
+
+Every archive has a `doc/` directory: `capabilities.md` (which simulator supports
+which ISA, timing, DMA and memory), `memory-system.md` (what backs each
+address range and how to move data between them) and `subsystem-emulator.md`
+(running the full-SoC model, its memory map and the DMA engine).
+
 ## Configurations
 
 Every archive has `hardware-configurations.json` at its root, validated
