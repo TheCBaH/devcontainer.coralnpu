@@ -1,8 +1,8 @@
 diff --git a/.bazelrc b/.bazelrc
-index 538bec8..4a3134d 100644
+index 286256a4..de3efd97 100644
 --- a/.bazelrc
 +++ b/.bazelrc
-@@ -167,3 +167,7 @@ build --strategy=SpyGlassLint=local
+@@ -174,3 +174,7 @@ build --strategy=SpyGlassLint=local
  
  # Import user config, if it exists (gitignored).
  try-import %workspace%/.bazelrc.user
@@ -11,7 +11,7 @@ index 538bec8..4a3134d 100644
 +# bounds-check vector<bool>; _GLIBCXX_ASSERTIONS does not.
 +build:glibcxx-debug --copt=-D_GLIBCXX_DEBUG
 diff --git a/rules/repos.bzl b/rules/repos.bzl
-index c8a86df..1c94ded 100644
+index c8a86df1..1c94ded1 100644
 --- a/rules/repos.bzl
 +++ b/rules/repos.bzl
 @@ -47,6 +47,7 @@ def verilator_repos():
@@ -24,7 +24,7 @@ index c8a86df..1c94ded 100644
  
 diff --git a/tests/trace_selection/BUILD b/tests/trace_selection/BUILD
 new file mode 100644
-index 0000000..57b495f
+index 00000000..57b495f1
 --- /dev/null
 +++ b/tests/trace_selection/BUILD
 @@ -0,0 +1,22 @@
@@ -52,7 +52,7 @@ index 0000000..57b495f
 +)
 diff --git a/tests/trace_selection/trace_selection_test.cc b/tests/trace_selection/trace_selection_test.cc
 new file mode 100644
-index 0000000..99c6119
+index 00000000..99c61192
 --- /dev/null
 +++ b/tests/trace_selection/trace_selection_test.cc
 @@ -0,0 +1,249 @@
@@ -306,13 +306,14 @@ index 0000000..99c6119
 +  return failures == 0 ? 0 : 1;
 +}
 diff --git a/tests/verilator_sim/BUILD b/tests/verilator_sim/BUILD
-index 35d41be..6815781 100644
+index cd559dbf..969a4b0f 100644
 --- a/tests/verilator_sim/BUILD
 +++ b/tests/verilator_sim/BUILD
-@@ -317,4 +317,15 @@ cc_test(
+@@ -316,3 +316,14 @@ cc_test(
+         "//hdl/chisel/src/coralnpu:dbus2axi_cc_library",
      ],
  )
- 
++
 +cc_test(
 +    name = "sysc_tb_trace_test",
 +    srcs = ["sysc_tb_trace_test.cc"],
@@ -323,10 +324,8 @@ index 35d41be..6815781 100644
 +        "@verilator//:libverilator",
 +    ],
 +)
-+
- collect_coralnpu_elfs()
 diff --git a/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc b/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
-index 349fa60..1d8fb96 100644
+index 349fa609..1d8fb964 100644
 --- a/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
 +++ b/tests/verilator_sim/coralnpu/core_mini_axi_sim.cc
 @@ -19,6 +19,7 @@
@@ -394,7 +393,7 @@ index 349fa60..1d8fb96 100644
          absl::GetFlag(FLAGS_backdoor_load));
    } catch (const sc_core::sc_report& report) {
 diff --git a/tests/verilator_sim/sysc_tb.h b/tests/verilator_sim/sysc_tb.h
-index d263bf6..eaa5f34 100644
+index d263bf65..eaa5f340 100644
 --- a/tests/verilator_sim/sysc_tb.h
 +++ b/tests/verilator_sim/sysc_tb.h
 @@ -18,8 +18,11 @@
@@ -479,7 +478,7 @@ index d263bf6..eaa5f34 100644
    static char *get_name(char *s) {
 diff --git a/tests/verilator_sim/sysc_tb_trace_test.cc b/tests/verilator_sim/sysc_tb_trace_test.cc
 new file mode 100644
-index 0000000..27c801b
+index 00000000..27c801b1
 --- /dev/null
 +++ b/tests/verilator_sim/sysc_tb_trace_test.cc
 @@ -0,0 +1,137 @@
@@ -622,7 +621,7 @@ index 0000000..27c801b
 +}
 diff --git a/third_party/verilator/0003-exact-trace-selection.patch b/third_party/verilator/0003-exact-trace-selection.patch
 new file mode 100644
-index 0000000..efc9164
+index 00000000..efc91645
 --- /dev/null
 +++ b/third_party/verilator/0003-exact-trace-selection.patch
 @@ -0,0 +1,198 @@

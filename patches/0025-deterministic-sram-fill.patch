@@ -1,8 +1,8 @@
 diff --git a/hdl/verilog/Sram.v b/hdl/verilog/Sram.v
-index 352c4a15..a938200f 100644
+index 0e14e646..241b7e77 100644
 --- a/hdl/verilog/Sram.v
 +++ b/hdl/verilog/Sram.v
-@@ -290,7 +290,9 @@ module Sram #(
+@@ -324,7 +324,9 @@ module Sram #(
    import "DPI-C" function chandle sram_init(
      input longint global_addr,
      input longint size_bytes,
@@ -13,7 +13,7 @@ index 352c4a15..a938200f 100644
    );
    import "DPI-C" function void sram_read(
      input chandle handle,
-@@ -309,8 +311,16 @@ module Sram #(
+@@ -343,8 +345,16 @@ module Sram #(
    reg [127:0] rdata_reg;
    assign rdata = rdata_reg;
  

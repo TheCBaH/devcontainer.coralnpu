@@ -1,5 +1,5 @@
 diff --git a/hdl/chisel/src/coralnpu/BUILD b/hdl/chisel/src/coralnpu/BUILD
-index 078d4047..fb3c4f4f 100644
+index ae2354cc..77a66721 100644
 --- a/hdl/chisel/src/coralnpu/BUILD
 +++ b/hdl/chisel/src/coralnpu/BUILD
 @@ -110,6 +110,17 @@ chisel_library(
@@ -21,7 +21,7 @@ index 078d4047..fb3c4f4f 100644
      name = "coralnpu_rvv",
      srcs = [
 diff --git a/hdl/chisel/src/coralnpu/RetirementBuffer.scala b/hdl/chisel/src/coralnpu/RetirementBuffer.scala
-index f049b2c2..9caeb690 100644
+index f4a6c0d5..1e363a75 100644
 --- a/hdl/chisel/src/coralnpu/RetirementBuffer.scala
 +++ b/hdl/chisel/src/coralnpu/RetirementBuffer.scala
 @@ -26,6 +26,7 @@ class RetirementBufferIO(p: Parameters) extends Bundle {
@@ -32,33 +32,32 @@ index f049b2c2..9caeb690 100644
    val writeAddrScalar = Input(Vec(p.instructionLanes, new RegfileWriteAddrIO(p)))
    val writeDataScalar = Input(Vec(p.instructionLanes + 2, Valid(new RegfileWriteDataIO(p))))
    val writeAddrFloat  = Option.when(p.enableFloat)(Input(new RegfileWriteAddrIO(p)))
-@@ -81,6 +82,7 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
-     val isEcall  = Bool()
-     val isMpause = Bool()
-     val isTile   = Bool()
-+    val isX0Load = Bool()
+@@ -83,6 +84,7 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
+     val isEcall      = Bool()
+     val isMpause     = Bool()
+     val isTile       = Bool()
++    val isX0Load     = Bool()
+     val isMtypeWrite = Bool()
    }
  
-   val storeComplete = Pipe(io.storeComplete)
-@@ -203,6 +205,7 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
+@@ -206,6 +208,7 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
      instr.isEcall       := (finst.inst === 0x73.U)
      instr.isMpause      := (finst.inst === 0x08000073.U)
      instr.isTile        := isTile
 +    instr.isX0Load      := (finst.inst(6, 0) === "b0000011".U) && (finst.inst(11, 7) === 0.U)
+     instr.isMtypeWrite  := (if (p.enableVme) RvvCompressedInstruction.writesMtype(finst.inst)
+                            else false.B)
      instr
-   }
- 
-@@ -428,7 +431,8 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
-   for (i <- 0 until bufferSize) {
-     val bufferEntry = instBuffer.io.dataOut(i)
+@@ -459,7 +462,7 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
+     val mtypeReady  = if (p.enableVme) mtypeWbDone.get(pIdx) else true.B
      // Check if this entry is an operation that doesn't require a register write, but is not a store.
--    val nonWritingInstr = (bufferEntry.idx === noWriteRegIdx) && !bufferEntry.isTile
-+    val nonWritingInstr =
-+      (bufferEntry.idx === noWriteRegIdx) && !bufferEntry.isTile && !bufferEntry.isX0Load
-     val storeInstr      = bufferEntry.idx === storeRegIdx
+     val nonWritingInstr =
+-      (bufferEntry.idx === noWriteRegIdx) && !bufferEntry.isTile &&
++      (bufferEntry.idx === noWriteRegIdx) && !bufferEntry.isTile && !bufferEntry.isX0Load &&
+         (!bufferEntry.isMtypeWrite || mtypeReady)
+     val storeInstr = bufferEntry.idx === storeRegIdx
  
-     // Check which incoming (scalar,float) write port matches this entry's needed address.
-@@ -465,6 +469,8 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
+@@ -495,6 +498,8 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
        faultRetire.valid && Mux(isRvvFault, rvvTagMatch, bufferEntry.addr === faultRetire.bits.mepc)
      // The entry is active if it's validly enqueued.
      val validBufferEntry = (i.U < instBuffer.io.nEnqueued)
@@ -67,7 +66,7 @@ index f049b2c2..9caeb690 100644
  
      // Find the index of the first write port that provides the needed data.
      val scalarWriteIdx = PriorityEncoder(scalarWriteIdxMap)
-@@ -559,7 +565,7 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
+@@ -589,7 +594,7 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
          (bufferEntry.isVector && tileDe2RtMatch)
      val dataReady = (scalarWriteIdxMap.reduce(_ | _) || floatWriteIdxMap.reduce(
        _ | _
@@ -76,7 +75,7 @@ index f049b2c2..9caeb690 100644
      val isControlFlow = bufferEntry.isControlFlow
      val isBranch      = bufferEntry.isBranch
      // For the last entry in the buffer, we can't see the next instruction yet (it hasn't been enqueued or wrapped visibly).
-@@ -699,10 +705,10 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
+@@ -729,10 +734,10 @@ class RetirementBuffer(p: Parameters, mini: Boolean = false) extends Module {
      regAfterFlush := false.B
    }
  
@@ -201,10 +200,10 @@ index 00000000..c230971d
 +  }
 +}
 diff --git a/hdl/chisel/src/coralnpu/scalar/Decode.scala b/hdl/chisel/src/coralnpu/scalar/Decode.scala
-index 6a8a3994..09e471a2 100644
+index 1e5aec6f..6e71e39d 100644
 --- a/hdl/chisel/src/coralnpu/scalar/Decode.scala
 +++ b/hdl/chisel/src/coralnpu/scalar/Decode.scala
-@@ -383,6 +383,7 @@ class Dispatch(p: Parameters) extends Module {
+@@ -384,6 +384,7 @@ class Dispatch(p: Parameters) extends Module {
  
      val fbusPortAddr = Option.when(p.enableFloat)(Output(UInt(5.W)))
  
@@ -212,7 +211,7 @@ index 6a8a3994..09e471a2 100644
      val retirement_buffer_nSpace       = Input(UInt(log2Ceil(p.retirementBufferSize + 1).W))
      val retirement_buffer_empty        = Input(Bool())
      val retirement_buffer_trap_pending = Input(Bool())
-@@ -939,11 +940,13 @@ class DispatchV2(p: Parameters) extends Dispatch(p) {
+@@ -947,11 +948,13 @@ class DispatchV2(p: Parameters) extends Dispatch(p) {
          }
          .getOrElse(Seq())
      )
@@ -232,7 +231,7 @@ index 6a8a3994..09e471a2 100644
        io.lsu(i).bits.elemWidth.get     := io.inst(i).bits.inst(14, 12)
        io.lsu(i).bits.nfields.get       := io.inst(i).bits.inst(31, 29)
 diff --git a/hdl/chisel/src/coralnpu/scalar/Lsu.scala b/hdl/chisel/src/coralnpu/scalar/Lsu.scala
-index d03ca284..ae886f8f 100644
+index 0f348229..5d16c9cd 100644
 --- a/hdl/chisel/src/coralnpu/scalar/Lsu.scala
 +++ b/hdl/chisel/src/coralnpu/scalar/Lsu.scala
 @@ -53,6 +53,7 @@ class Lsu(p: Parameters) extends Module {
@@ -283,7 +282,7 @@ index d03ca284..ae886f8f 100644
      if (fbus.isDefined) {
        result.addr := sbus.addr(i)
        result.data := Mux(cmd.op.isOneOf(LsuOp.FLOAT, LsuOp.FLOAT_H), fbus.get.data(i), sbus.data(i))
-@@ -740,6 +744,7 @@ class LsuSuperSlot(p: Parameters) extends Module {
+@@ -751,6 +755,7 @@ class LsuSuperSlot(p: Parameters) extends Module {
      }
  
      val pc      = UInt(p.programCounterBits.W)
@@ -291,7 +290,7 @@ index d03ca284..ae886f8f 100644
      val write   = Bool()
      val faulted = Bool()
      // TODO: move into vector
-@@ -1560,6 +1565,7 @@ class LsuSuperSlot(p: Parameters) extends Module {
+@@ -1570,6 +1575,7 @@ class LsuSuperSlot(p: Parameters) extends Module {
          new State(),
          _               -> this,
          _.pc            -> uop.pc,
@@ -299,7 +298,7 @@ index d03ca284..ae886f8f 100644
          _.write         -> uop.store,
          _.faulted       -> false.B,
          _.strictMode    -> (isOrderedIndexed || uop.strict.getOrElse(false.B)),
-@@ -1743,6 +1749,7 @@ class LsuSuperSlot(p: Parameters) extends Module {
+@@ -1753,6 +1759,7 @@ class LsuSuperSlot(p: Parameters) extends Module {
        val ret = MakeWireBundle[State](
          new State,
          _.pc                  -> 0.U,
@@ -307,15 +306,15 @@ index d03ca284..ae886f8f 100644
          _.write               -> false.B,
          _.faulted             -> false.B,
          _.strictMode          -> false.B,
-@@ -1796,6 +1803,7 @@ class LsuSuperSlot(p: Parameters) extends Module {
+@@ -1806,6 +1813,7 @@ class LsuSuperSlot(p: Parameters) extends Module {
      val vmeData         = Option.when(p.enableVme)(Flipped(Decoupled(new Vme2Lsu(p))))
      val vmeWriteback    = Option.when(p.enableVme)(Decoupled(new Lsu2Vme(p)))
      val pc              = UInt(p.programCounterBits.W)
 +    val loadComplete    = Valid(UInt(log2Ceil(p.retirementBufferSize).W))
      val active          = Bool()
      val storeComplete   = Bool()
-     val faultingVstart  = Option.when(p.enableRvv)(Output(Valid(UInt(log2Ceil(p.rvvVlen).W))))
-@@ -1847,6 +1855,7 @@ class LsuSuperSlot(p: Parameters) extends Module {
+     val fault           = Output(Valid(new LsuFaultInfo(p)))
+@@ -1893,6 +1901,7 @@ class LsuSuperSlot(p: Parameters) extends Module {
    io.intWriteback.valid     := writebackReq.integer.valid
    io.intWriteback.bits.addr := state.rd
    io.intWriteback.bits.data := writebackReq.integer.bits
@@ -323,9 +322,9 @@ index d03ca284..ae886f8f 100644
    io.floatWriteback.foreach { x =>
      x.valid     := writebackReq.float.get.valid
      x.bits.addr := state.rd
-@@ -2133,6 +2142,17 @@ class LsuV3(p: Parameters) extends Lsu(p) {
+@@ -2203,6 +2212,17 @@ class LsuV3(p: Parameters) extends Lsu(p) {
    // status reporting
-   io.active        := rs.io.nEnqueued > 0.U || !slot.io.active || flushCmd.valid
+   io.active := rs.io.nEnqueued > 0.U || !slotsIdle || flushCmd.valid || isFaulted || isFlushing
    io.storeComplete := MakeValid(slot.io.storeComplete, slot.io.pc)
 +  // The active bus transaction can outlive a trap flush and tag reuse.
 +  val loadFlushed = RegInit(false.B)
@@ -342,10 +341,10 @@ index d03ca284..ae886f8f 100644
    io.flush.valid  := flushCmd.valid
    io.flush.pcNext := flushCmd.bits.pcNext
 diff --git a/hdl/chisel/src/coralnpu/scalar/SCore.scala b/hdl/chisel/src/coralnpu/scalar/SCore.scala
-index f3e8347b..acf51f94 100644
+index d223219e..9ba12607 100644
 --- a/hdl/chisel/src/coralnpu/scalar/SCore.scala
 +++ b/hdl/chisel/src/coralnpu/scalar/SCore.scala
-@@ -68,6 +68,7 @@ class SCore(p: Parameters) extends Module {
+@@ -66,6 +66,7 @@ class SCore(p: Parameters) extends Module {
    (0 until p.instructionLanes + 2).foreach(i => {
      rob_io.writeDataScalar(i) := regfile.io.writeData(i)
    })
@@ -353,7 +352,7 @@ index f3e8347b..acf51f94 100644
    dispatch.io.retirement_buffer_nSpace       := rob_io.nSpace
    dispatch.io.retirement_buffer_empty        := rob_io.empty
    dispatch.io.retirement_buffer_trap_pending := rob_io.trapPending
-@@ -112,6 +113,7 @@ class SCore(p: Parameters) extends Module {
+@@ -110,6 +111,7 @@ class SCore(p: Parameters) extends Module {
    }
    rob_io.fault         := fault_manager.io.out
    rob_io.storeComplete := lsu.io.storeComplete

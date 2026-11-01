@@ -235,10 +235,6 @@ the wrapper applies `provenance/mpact-patches/m4-bf16-decoder.patch` to restore
 that inherited instruction. The FP/BF16 example tests this path on both models.
 Upstream MPACT accepts the matrix alternate-format bit for SEW ≤ 16 and sets
 vill above it; the BF16 matrix case exercises configuration and arithmetic.
-`provenance/0009-vme-retirement-interlock.patch` prevents tile-store
-completions from colliding with staggered matrix-result retirement in VME.
-The accumulation, configuration-readback and program-exit checks cover this
-sequence, which otherwise leaves the matrix engine busy indefinitely.
 
 ## RTL waveforms
 
