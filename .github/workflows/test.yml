@@ -24,11 +24,15 @@ jobs:
           - {name: emulators ubuntu kernels-highmem, archive: coralnpu-emulators, image: 'ubuntu:24.04', groups: kernels-highmem}
           - {name: emulators ubuntu uninit, archive: coralnpu-emulators, image: 'ubuntu:24.04', groups: uninit}
           - {name: emulators ubuntu contracts, archive: coralnpu-emulators, image: 'ubuntu:24.04', groups: contracts}
+          - {name: emulators ubuntu host, archive: coralnpu-emulators, image: 'ubuntu:24.04', groups: host}
+          - {name: emulators ubuntu limits, archive: coralnpu-emulators, image: 'ubuntu:24.04', groups: limits}
           - {name: emulators debian rtl, archive: coralnpu-emulators, image: 'debian:13-slim', groups: rtl}
           - {name: emulators debian kernels-tcm, archive: coralnpu-emulators, image: 'debian:13-slim', groups: kernels-tcm}
           - {name: emulators debian kernels-highmem, archive: coralnpu-emulators, image: 'debian:13-slim', groups: kernels-highmem}
           - {name: emulators debian uninit, archive: coralnpu-emulators, image: 'debian:13-slim', groups: uninit}
           - {name: emulators debian contracts, archive: coralnpu-emulators, image: 'debian:13-slim', groups: contracts}
+          - {name: emulators debian host, archive: coralnpu-emulators, image: 'debian:13-slim', groups: host}
+          - {name: emulators debian limits, archive: coralnpu-emulators, image: 'debian:13-slim', groups: limits}
           - {name: subsystem, archive: coralnpu-subsystem, image: 'python:3.13-slim-trixie', groups: ''}
     steps:
       - uses: actions/checkout@v7

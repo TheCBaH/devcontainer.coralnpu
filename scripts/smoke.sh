@@ -3,8 +3,8 @@ set -euo pipefail
 ulimit -c 0
 root=$(cd -- "$(dirname -- "$0")" && pwd)
 unset LD_LIBRARY_PATH PYTHONPATH RUNFILES_DIR RUNFILES_MANIFEST_FILE
-# CORAL_SMOKE_GROUPS selects parts of the run (rtl kernels-tcm kernels-highmem uninit contracts); CI shards on it.
-groups=${CORAL_SMOKE_GROUPS:-rtl kernels-tcm kernels-highmem uninit contracts}
+# CORAL_SMOKE_GROUPS selects parts of the run (rtl kernels-tcm kernels-highmem uninit contracts host limits); CI shards on it.
+groups=${CORAL_SMOKE_GROUPS:-rtl kernels-tcm kernels-highmem uninit contracts host limits}
 group() { [[ " $groups " == *" $1 "* ]]; }
 scratch=$(mktemp -d)
 trap 'find "$scratch" -delete' EXIT
@@ -179,7 +179,11 @@ if group contracts; then
     test "$status" -ne 124
     test "$status" -ne 127
   done
+fi
+if group host; then
   bash "$root/host-contract.sh"
+fi
+if group limits; then
   bash "$root/mpact-limits.sh"
 fi
 echo "External scalar, RVV, vector FP, matrix, memory and invalid-input checks passed"
