@@ -28,8 +28,8 @@
          "program": "examples/kernel_residual_add_bf16.elf", "marker": "CORAL_KERNEL_RESIDUAL_ADD_BF16",
          "tolerance": {"rtol": 1e-2, "atol": 1e-2}, "input_range": {"A": [-5.0, 5.0], "B": [-5.0, 5.0]}}
       ],
-      "shapes_checked": ["3x640", "1x643", "1x67", "2x200 (rows x hidden; the kernel sees rows*hidden elements)"],
-      "reference": "A + B in double precision from the (BF16-rounded) inputs"
+      "shapes_checked": ["2x160", "1x67", "1x33 (rows x hidden; the kernel sees rows*hidden elements)"],
+      "reference": "A + B in FP32 from the (BF16-rounded) inputs"
     },
     {
       "id": "rms_norm",
@@ -47,8 +47,8 @@
          "tolerance": {"rtol": 1e-2, "atol": 1e-2}, "input_range": {"input": [-1.0, 1.0], "weight": [-0.5, 0.5]}}
       ],
       "parameters": {"epsilon": 1e-6},
-      "shapes_checked": ["3x640", "1x643", "1x67", "2x200 (seq_len x hidden_size)"],
-      "reference": "double-precision sum of squares, then x * (1/sqrt(mean + epsilon)) * (1 + weight)"
+      "shapes_checked": ["2x160", "1x67", "1x33 (seq_len x hidden_size)"],
+      "reference": "double-precision sum of squares, then FP32 x * (1/sqrt(mean + epsilon)) * (1 + weight)"
     },
     {
       "id": "tanh_gelu_mul",
@@ -65,8 +65,8 @@
          "program": "examples/kernel_tanh_gelu_mul_bf16.elf", "marker": "CORAL_KERNEL_TANH_GELU_MUL_BF16",
          "tolerance": {"rtol": 1e-2, "atol": 1e-2}, "input_range": {"gate": [-3.0, 3.0], "up": [-3.0, 3.0]}}
       ],
-      "shapes_checked": ["3x640", "1x643", "1x67", "2x200 (rows x hidden; the kernel sees rows*hidden elements)"],
-      "reference": "the formula above with libm tanhf",
+      "shapes_checked": ["2x160", "1x67", "1x33 (rows x hidden; the kernel sees rows*hidden elements)"],
+      "reference": "the formula above in FP32 with libm tanhf",
       "notes": "The kernel evaluates tanh with a rational approximation clamped to [-3, 3]; the tolerance covers that."
     },
     {

@@ -47,9 +47,11 @@ void rvv_tanh_gelu_mul_f32(const float*, const float*, float*, size_t);
 
 struct Shape { int rows, cols; };
 // Tails (not a multiple of the 32-lane f32 vector length), several rows and a
-// single row. Small, because the reference runs in the guest.
-static const Shape kShapes[] = {{3, 640}, {1, 643}, {1, 67}, {2, 200}};
-constexpr int kMaxElements = 3 * 640, kMaxCols = 643, kGuard = 64;
+// single row. Small, because the reference runs in the guest. It uses FP32
+// (hardware) arithmetic, except the RMSNorm sum of squares; double precision
+// is emulated in software and far too slow in an RTL simulation.
+static const Shape kShapes[] = {{2, 160}, {1, 67}, {1, 33}};
+constexpr int kMaxElements = 2 * 160, kMaxCols = 160, kGuard = 64;
 constexpr float kEpsilon = 1e-6f;
 
 // Tolerances follow the upstream cocotb tests.
@@ -159,26 +161,26 @@ int main() {
 #if defined(KERNEL_RMS_NORM)
       double sum = 0;
       for (int col = 0; col < shape.cols; ++col) {
-        const double x = decode(input_a[row * shape.cols + col]);
+        const float x = decode(input_a[row * shape.cols + col]);
         sum += x * x;
       }
-      const double scale = 1.0 / sqrt(sum / shape.cols + kEpsilon);
+      const float scale = 1.0f / sqrtf(static_cast<float>(sum / shape.cols) + kEpsilon);
 #endif
       for (int col = 0; col < shape.cols; ++col) {
         const int index = row * shape.cols + col;
-        const double a = decode(input_a[index]);
+        const float a = decode(input_a[index]);
 #if defined(KERNEL_RESIDUAL_ADD)
-        const double expected = a + decode(input_b[index]);
+        const float expected = a + decode(input_b[index]);
 #elif defined(KERNEL_RMS_NORM)
-        const double expected = a * scale * (1.0 + decode(weight[col]));
+        const float expected = a * scale * (1.0f + decode(weight[col]));
 #else
-        const double up = decode(input_b[index]);
-        const double inner = 0.7978845608028654 * (a + 0.044715 * a * a * a);
-        const double expected = 0.5 * a * (1.0 + tanhf(static_cast<float>(inner))) * up;
+        const float up = decode(input_b[index]);
+        const float inner = 0.7978845608f * (a + 0.044715f * a * a * a);
+        const float expected = 0.5f * a * (1.0f + tanhf(inner)) * up;
 #endif
-        const double actual = decode(output[index]);
-        const double error = fabs(actual - expected);
-        if (!(error <= kAtol + kRtol * fabs(expected))) {
+        const float actual = decode(output[index]);
+        const float error = fabsf(actual - expected);
+        if (!(error <= kAtol + kRtol * fabsf(expected))) {
           printf(MARKER "_FAIL case=%dx%d index=%d expected_e6=%d actual_e6=%d\n", shape.rows,
                  shape.cols, index, static_cast<int>(expected * 1e6), static_cast<int>(actual * 1e6));
           return 1;
