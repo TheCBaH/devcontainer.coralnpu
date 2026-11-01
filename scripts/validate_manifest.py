@@ -6,6 +6,8 @@ from pathlib import Path
 import subprocess
 import sys
 
+from zvt_export import ZVT_VERSION
+
 
 def sha256(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
@@ -65,7 +67,9 @@ def validate_configuration(record):
     if not isa["matrix"]["supported"]:
         check("zvt" not in isa["extensions"] and isa["bf16"]["matrix"] is not True,
               "matrix features listed without matrix support in " + name)
+        check(isa["matrix"].get("zvt_version") is None, "Zvt version without matrix support in " + name)
     else:
+        check(isa["matrix"].get("zvt_version") == ZVT_VERSION, "Zvt version is not " + ZVT_VERSION + " in " + name)
         check(isa["vector"]["supported"], "matrix support requires vectors in " + name)
     parameters = record["provenance"]["build_parameters"].get("generated_parameters", {})
     for kind, key in (("itcm", "itcmSizeKBytes"), ("dtcm", "dtcmSizeKBytes")):

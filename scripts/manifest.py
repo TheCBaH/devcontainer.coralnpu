@@ -7,6 +7,7 @@ import re
 import subprocess
 
 from build import ROOT, SOURCE
+from zvt_export import ZVT_VERSION
 
 CORAL_REPOSITORY = "https://github.com/google-coral/coralnpu"
 WRAPPER_REPOSITORY = "https://github.com/TheCBaH/devcontainer.coralnpu"
@@ -163,7 +164,8 @@ def rtl_isa(kind, parameters):
     if kind == "vme":
         extensions.append("zvt")
         matrix = {"supported": True, "extension": "zvt (experimental Coral NPU matrix engine)",
-                  "tile_registers": parameters.get("vmeRegCount"), "element_formats": ["int8", "fp32", "bf16"]}
+                  "zvt_version": ZVT_VERSION, "tile_registers": parameters.get("vmeRegCount"),
+                  "element_formats": ["int8", "fp32", "bf16"]}
     else:
         disabled.append("--enableVme")
     if not parameters.get("enableVerification", False):
@@ -373,7 +375,7 @@ def mpact(executable, revision):
             "compiler_march": None,
             "vector": {"supported": True, "vlen_bits": 128, "elen_bits": 32, "floating_point": vector_fp},
             "matrix": {"supported": matrix, "extension": "zvt (experimental)" if matrix else None,
-                       "tile_registers": None, "element_formats": ["int8", "fp32", "bf16"] if matrix else []},
+                       "zvt_version": ZVT_VERSION if matrix else None, "tile_registers": None, "element_formats": ["int8", "fp32", "bf16"] if matrix else []},
             "bf16": {"scalar_conversion": None, "vector_conversion": bf16, "matrix": matrix},
             "disabled_generator_options": [],
         },

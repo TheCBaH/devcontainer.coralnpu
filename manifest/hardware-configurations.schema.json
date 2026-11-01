@@ -203,6 +203,7 @@
           "properties": {
             "supported": {"type": "boolean"},
             "extension": {"type": ["string", "null"]},
+            "zvt_version": {"description": "Zvt specification version the matrix instructions follow; null without matrix support", "type": ["string", "null"], "pattern": "^v[0-9]+\\.[0-9]+$"},
             "tile_registers": {"type": ["integer", "null"]},
             "element_formats": {"type": "array", "items": {"type": "string"}}
           }
