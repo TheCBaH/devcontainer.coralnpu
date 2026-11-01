@@ -224,7 +224,8 @@ with the generated elaboration parameters.
 and `CORAL_SMOKE_GROUPS` selects parts of an emulator `smoke.sh` (`rtl`,
 `kernels-tcm`, `kernels-highmem`, `uninit`, `contracts`). CI runs each
 archive, image and group as its own job (`.github/workflows/test.yml`), then
-`make results` collects the fixture results.
+`make results` collects the fixture results. The subsystem simulator is
+built for two Verilator threads and tested on two CPUs.
 `make ci` runs fixture build, packaging and external tests on an x86_64
 Docker host with the development tools installed.
 

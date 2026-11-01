@@ -19,12 +19,13 @@ mkdir -p "$results"
 for archive in "${archives[@]}"; do
   [[ -z "$only_archive" || "$archive" == "$only_archive"-* ]] || continue
   case "$archive" in
-    coralnpu-subsystem-*) images=(python:3.13-slim-trixie) ;;
-    *) images=(ubuntu:24.04 debian:13-slim) ;;
+    # The subsystem simulator is built for two threads; run it on two CPUs.
+    coralnpu-subsystem-*) images=(python:3.13-slim-trixie) cpus=(--cpuset-cpus=0,1) ;;
+    *) images=(ubuntu:24.04 debian:13-slim) cpus=() ;;
   esac
   for image in "${images[@]}"; do
     [[ -z "$only_image" || "$image" == "$only_image" ]] || continue
-    docker run --rm --network=none \
+    docker run --rm --network=none "${cpus[@]}" \
       --mount "type=bind,src=$root/dist,dst=/archives,readonly" \
       -e ARCHIVE="$archive" ${only_groups:+-e CORAL_SMOKE_GROUPS="$only_groups"} "$image" bash -euo pipefail -c '
         mkdir -p /tmp/relocated
