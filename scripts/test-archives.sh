@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
+# Usage: test-archives.sh [archive-prefix image [smoke-groups]]
+# Without arguments every archive runs in every image and the results are collected; CI shards by
+# archive, image and smoke group, then collects with scripts/fixture_results.py.
 set -euo pipefail
+only_archive=${1:-} only_image=${2:-} only_groups=${3:-}
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root/dist"
 sha256sum -c SHA256SUMS
@@ -9,16 +13,20 @@ if [ "${#archives[@]}" -eq 0 ]; then
   echo "No archives were packaged"
   exit 1
 fi
-mkdir -p "$root/.cache/results"
+tag=${only_groups:-all}
+results="$root/.cache/results/${tag// /+}"
+mkdir -p "$results"
 for archive in "${archives[@]}"; do
+  [[ -z "$only_archive" || "$archive" == "$only_archive"-* ]] || continue
   case "$archive" in
     coralnpu-subsystem-*) images=(python:3.13-slim-trixie) ;;
     *) images=(ubuntu:24.04 debian:13-slim) ;;
   esac
   for image in "${images[@]}"; do
+    [[ -z "$only_image" || "$image" == "$only_image" ]] || continue
     docker run --rm --network=none \
       --mount "type=bind,src=$root/dist,dst=/archives,readonly" \
-      -e ARCHIVE="$archive" "$image" bash -euo pipefail -c '
+      -e ARCHIVE="$archive" ${only_groups:+-e CORAL_SMOKE_GROUPS="$only_groups"} "$image" bash -euo pipefail -c '
         mkdir -p /tmp/relocated
         tar -xzf "/archives/$ARCHIVE" -C /tmp/relocated
         bundle=/tmp/relocated/${ARCHIVE%.tar.gz}
@@ -43,7 +51,7 @@ for archive in "${archives[@]}"; do
           cat broken.log
           grep -Eq "file too short|invalid ELF header" broken.log
         fi
-      ' | tee "$root/.cache/results/${archive%.tar.gz}-${image//[:\/]/_}.log"
+      ' | tee "$results/${archive%.tar.gz}-${image//[:\/]/_}.log"
   done
 done
-python3 "$root/scripts/fixture_results.py" "$root/dist" "$root/.cache/results"
+[ -n "$only_archive$only_image$only_groups" ] || python3 "$root/scripts/fixture_results.py" "$root/dist" "$root/.cache/results"

@@ -220,6 +220,11 @@ larger-TCM and external-RAM transfers, subsystem
 DMA between SRAM, DTCM and ITCM, and bad inputs. Packaging validates every
 manifest against its schema, IDs, artifact hashes and coverage, and agreement
 with the generated elaboration parameters.
+`make test` takes optional arguments (`archive-prefix image [smoke-groups]`)
+and `CORAL_SMOKE_GROUPS` selects parts of an emulator `smoke.sh` (`rtl`,
+`kernels-tcm`, `kernels-highmem`, `uninit`, `contracts`). CI runs each
+archive, image and group as its own job (`.github/workflows/test.yml`), then
+`make results` collects the fixture results.
 `make ci` runs fixture build, packaging and external tests on an x86_64
 Docker host with the development tools installed.
 

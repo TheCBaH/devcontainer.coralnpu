@@ -1,4 +1,4 @@
-.PHONY: submodule prepare fixtures build python-bindings test package ci rtl-tests dma-tests trace-tests
+.PHONY: results submodule prepare fixtures build python-bindings test package ci rtl-tests dma-tests trace-tests
 ARCHIVES ?= emulators subsystem
 submodule:
 	git submodule update --init --recursive --depth 1
@@ -20,4 +20,6 @@ package: build
 	python3 scripts/package.py $(ARCHIVES)
 test:
 	bash scripts/test-archives.sh
+results:
+	python3 scripts/fixture_results.py dist .cache/results
 ci: fixtures rtl-tests dma-tests trace-tests package test

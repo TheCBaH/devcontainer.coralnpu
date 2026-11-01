@@ -173,21 +173,12 @@ jobs:
           restore-keys: actions-${{ runner.arch }}-
       - name: Build and package
         run: $EXEC make package
-      - name: Test external archives
-        run: make test
-      - name: Upload verified archives
+      - name: Upload archives
         uses: actions/upload-artifact@v7
         with:
-          name: archives-x86_64
+          name: dist-x86_64
           path: dist/*
           if-no-files-found: error
-      - name: Preserve failed archives
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: diagnostics-x86_64
-          path: dist/*
-          if-no-files-found: ignore
       - name: Save Bazel repository cache
         if: success() && github.event_name != 'pull_request' && steps.repos-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
@@ -253,21 +244,12 @@ jobs:
           restore-keys: actions-${{ runner.arch }}-
       - name: Build and package
         run: $EXEC make package
-      - name: Test external archives
-        run: make test
-      - name: Upload verified archives
+      - name: Upload archives
         uses: actions/upload-artifact@v7
         with:
-          name: archives-aarch64
+          name: dist-aarch64
           path: dist/*
           if-no-files-found: error
-      - name: Preserve failed archives
-        if: failure()
-        uses: actions/upload-artifact@v7
-        with:
-          name: diagnostics-aarch64
-          path: dist/*
-          if-no-files-found: ignore
       - name: Save Bazel repository cache
         if: success() && github.event_name != 'pull_request' && steps.repos-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
@@ -285,8 +267,20 @@ jobs:
         run: |
           df -h
           du -sh .cache/repos .cache/actions || true
+  test-x86_64:
+    needs: x86_64
+    uses: ./.github/workflows/test.yml
+    with:
+      arch: x86_64
+      runner: ubuntu-24.04
+  test-aarch64:
+    needs: aarch64
+    uses: ./.github/workflows/test.yml
+    with:
+      arch: aarch64
+      runner: ubuntu-24.04-arm
   manifests:
-    needs: [x86_64, aarch64]
+    needs: [test-x86_64, test-aarch64]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -295,6 +289,7 @@ jobs:
           persist-credentials: false
       - uses: actions/download-artifact@v8
         with:
+          pattern: archives-*
           path: assets
       - name: Compare host variants of each configuration
         run: |

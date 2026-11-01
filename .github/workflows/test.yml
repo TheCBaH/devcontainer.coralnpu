@@ -1,0 +1,76 @@
+name: test
+on:
+  workflow_call:
+    inputs:
+      arch:
+        type: string
+        required: true
+      runner:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  shard:
+    name: ${{ matrix.name }}
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: emulators ubuntu rtl, archive: coralnpu-emulators, image: 'ubuntu:24.04', groups: rtl}
+          - {name: emulators ubuntu kernels-tcm, archive: coralnpu-emulators, image: 'ubuntu:24.04', groups: kernels-tcm}
+          - {name: emulators ubuntu kernels-highmem, archive: coralnpu-emulators, image: 'ubuntu:24.04', groups: kernels-highmem}
+          - {name: emulators ubuntu uninit, archive: coralnpu-emulators, image: 'ubuntu:24.04', groups: uninit}
+          - {name: emulators ubuntu contracts, archive: coralnpu-emulators, image: 'ubuntu:24.04', groups: contracts}
+          - {name: emulators debian rtl, archive: coralnpu-emulators, image: 'debian:13-slim', groups: rtl}
+          - {name: emulators debian kernels-tcm, archive: coralnpu-emulators, image: 'debian:13-slim', groups: kernels-tcm}
+          - {name: emulators debian kernels-highmem, archive: coralnpu-emulators, image: 'debian:13-slim', groups: kernels-highmem}
+          - {name: emulators debian uninit, archive: coralnpu-emulators, image: 'debian:13-slim', groups: uninit}
+          - {name: emulators debian contracts, archive: coralnpu-emulators, image: 'debian:13-slim', groups: contracts}
+          - {name: subsystem, archive: coralnpu-subsystem, image: 'python:3.13-slim-trixie', groups: ''}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist-${{ inputs.arch }}
+          path: dist
+      - name: Test archives
+        run: bash scripts/test-archives.sh "${{ matrix.archive }}" "${{ matrix.image }}" "${{ matrix.groups }}"
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-${{ inputs.arch }}-${{ strategy.job-index }}
+          path: .cache/results
+          include-hidden-files: true
+          if-no-files-found: ignore
+  verify:
+    needs: shard
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+          persist-credentials: false
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist-${{ inputs.arch }}
+          path: dist
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: results-${{ inputs.arch }}-*
+          path: .cache/results
+          merge-multiple: true
+      - name: Collect fixture results
+        run: make results
+      - name: Upload verified archives
+        uses: actions/upload-artifact@v7
+        with:
+          name: archives-${{ inputs.arch }}
+          path: dist/*
+          if-no-files-found: error
