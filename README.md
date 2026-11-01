@@ -112,7 +112,7 @@ point and BF16 conversion; M4 adds experimental Zvt matrix instructions.
 Choose the MPACT generation by executable name. The emulator archive
 describes the M4 Zvt encodings in `isa/zvt.jsonl`, exported by
 `provenance/zvt_export.py` from the patched MPACT decoder: a provenance
-line (MPACT commit, patch and input hashes), then one line per instruction
+line (CoralNPU revision, Zvt version, MPACT commit, patch and input hashes), then one line per instruction
 with mask/match, constrained fields, format field layout and disassembly
 template. Verilator provides CoreMini
 scalar, RvvCoreMini vector and VmeCoreMini matrix RTL simulation. Python

@@ -16,6 +16,8 @@ FORMATS = "riscv/riscv_format32.bin_fmt"
 GROUP = "riscv/riscv_zvt.bin_fmt"
 ISA = "riscv/riscv_zvt.isa"
 REPOSITORY = "https://github.com/google/mpact-riscv"
+# Zvt specification version the patched decoder implements; change it with the Zvt patches.
+ZVT_VERSION = "v0.4"
 
 
 def sha256(path):
@@ -212,6 +214,7 @@ def provenance(root, source, coralnpu_revision=None):
         "schema_version": SCHEMA_VERSION,
         "description": "Zvt matrix instructions as decoded by MPACT for the CoralNPU M4 model",
         "coralnpu_revision": coralnpu_revision,
+        "zvt_version": ZVT_VERSION,
         "mpact_riscv": {"repository": REPOSITORY, "commit": commit},
         "patches": [{"label": label, "sha256": sha256(label_path(source, label))}
                     for label in patch_labels(source)],
