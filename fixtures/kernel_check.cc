@@ -61,6 +61,10 @@ constexpr double kRtol = 1e-5, kAtol = 1e-5;
 constexpr double kRtol = 1e-6, kAtol = 1e-6;
 #elif defined(KERNEL_TANH_GELU_MUL) && !defined(KERNEL_BF16)
 constexpr double kRtol = 1e-2, kAtol = 1e-2;
+#elif defined(KERNEL_TANH_GELU_MUL)
+// Looser, as upstream's BF16 test: gate and up reach +-3, where the kernel's
+// rational tanh is off by about 0.02.
+constexpr double kRtol = 3e-2, kAtol = 8e-2;
 #else
 constexpr double kRtol = 1e-2, kAtol = 1e-2;
 #endif

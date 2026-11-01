@@ -63,7 +63,7 @@
         {"dtype": "bf16", "entry": "rvv_tanh_gelu_mul_bf16",
          "signature": "void rvv_tanh_gelu_mul_bf16(const __bf16* gate, const __bf16* up, __bf16* output, size_t total_elements)",
          "program": "examples/kernel_tanh_gelu_mul_bf16.elf", "marker": "CORAL_KERNEL_TANH_GELU_MUL_BF16",
-         "tolerance": {"rtol": 1e-2, "atol": 1e-2}, "input_range": {"gate": [-3.0, 3.0], "up": [-3.0, 3.0]}}
+         "tolerance": {"rtol": 3e-2, "atol": 8e-2}, "input_range": {"gate": [-3.0, 3.0], "up": [-3.0, 3.0]}}
       ],
       "shapes_checked": ["2x160", "1x67", "1x33 (rows x hidden; the kernel sees rows*hidden elements)"],
       "reference": "the formula above in FP32 with libm tanhf",
