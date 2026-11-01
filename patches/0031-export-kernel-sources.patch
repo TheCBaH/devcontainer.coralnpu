@@ -1,0 +1,14 @@
+diff --git a/tests/cocotb/rvv/ml_ops/gemma_kernels/BUILD b/tests/cocotb/rvv/ml_ops/gemma_kernels/BUILD
+index 23c3fa2a..20962cc6 100644
+--- a/tests/cocotb/rvv/ml_ops/gemma_kernels/BUILD
++++ b/tests/cocotb/rvv/ml_ops/gemma_kernels/BUILD
+@@ -23,6 +23,9 @@ exports_files([
+     "rvv_matmul.cc",
+     "rvv_int8_matmul.cc",
+     "rvv_bf16_matmul.cc",
++    "rvv_residual_add.cc",
++    "rvv_rms_norm.cc",
++    "rvv_tanh_gelu_mul.cc",
+ ])
+ 
+ cc_library(

@@ -208,6 +208,30 @@ VME_TESTS = [
     ("bf16", "rvv_bf16_matmul.cc", ["-DCORAL_MATMUL_BF16"]),
 ]]
 
+# Self-checking harnesses for Coral's Gemma RVV kernels (kernels/kernels.json).
+[coralnpu_v2_binary(
+    name = "kernel_%s_%s" % (kernel, dtype),
+    srcs = [
+        "kernel_check.cc",
+        "//tests/cocotb/rvv/ml_ops/gemma_kernels:" + source,
+    ],
+    copts = [
+        "-fno-tree-vectorize",
+        "-fno-tree-slp-vectorize",
+        "-DKERNEL_" + kernel.upper(),
+    ] + (["-DKERNEL_BF16"] if dtype == "bf16" else []),
+    itcm_size_kbytes = 512,
+    dtcm_size_kbytes = 512,
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 8192,
+    deps = ["//tests/cocotb/rvv/ml_ops/gemma_kernels:rvv_common_vec"],
+) for kernel, source in [
+    ("residual_add", "rvv_residual_add.cc"),
+    ("rms_norm", "rvv_rms_norm.cc"),
+    ("tanh_gelu_mul", "rvv_tanh_gelu_mul.cc"),
+] for dtype in ["f32", "bf16"]]
+
 coralnpu_v2_binary(
     name = "vme_external_matmul",
     srcs = ["vme_external_matmul.cc"],

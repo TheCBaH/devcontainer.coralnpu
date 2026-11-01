@@ -1,0 +1,117 @@
+{
+  "schema_version": "1.0",
+  "description": "Coral's Gemma RVV kernels as self-checking guest programs. Each program generates deterministic inputs, calls the unmodified upstream kernel, compares the result with a reference and prints a pass marker.",
+  "upstream": {
+    "repository": "google-coral/coralnpu",
+    "directory": "tests/cocotb/rvv/ml_ops/gemma_kernels"
+  },
+  "conventions": {
+    "isa": "RV32 with RVV, VLEN=128. FP32 math uses e32m8 vectors; BF16 data is widened to FP32 on load (vfwcvtbf16) and narrowed on store (vfncvtbf16).",
+    "bf16": "BF16 is stored as raw 16-bit values (upper half of an IEEE binary32, round to nearest even).",
+    "layout": "Row-major. The kernel_* programs keep their buffers in DTCM (512 KiB layout); the rvv_matmul_* programs use external RAM at 0x20000000. Every program leaves guard words after the output and fails if any change.",
+    "cycles": "Harnesses report the sum of mcycle deltas around the kernel calls. Cycle counts are meaningful on the RTL simulators only; MPACT has no timing model.",
+    "pass_marker": "Each program prints <marker>_CASE lines, then <marker>_PASS cases=N cycles=C max_abs_error_e9=E, or <marker>_FAIL with the failing index. E is the largest absolute error times 1e9."
+  },
+  "kernels": [
+    {
+      "id": "residual_add",
+      "summary": "Elementwise residual addition of two tensors.",
+      "operation": "Y[i] = A[i] + B[i] for i in [0, total_elements)",
+      "source_files": ["rvv_residual_add.cc", "rvv_common_vec.h"],
+      "variants": [
+        {"dtype": "f32", "entry": "rvv_residual_add_f32",
+         "signature": "void rvv_residual_add_f32(const float* A, const float* B, float* Y, size_t total_elements)",
+         "program": "examples/kernel_residual_add_f32.elf", "marker": "CORAL_KERNEL_RESIDUAL_ADD_F32",
+         "tolerance": {"rtol": 1e-5, "atol": 1e-5}, "input_range": {"A": [-1.0, 1.0], "B": [-0.5, 0.5]}},
+        {"dtype": "bf16", "entry": "rvv_residual_add_bf16",
+         "signature": "void rvv_residual_add_bf16(const __bf16* A, const __bf16* B, __bf16* Y, size_t total_elements)",
+         "program": "examples/kernel_residual_add_bf16.elf", "marker": "CORAL_KERNEL_RESIDUAL_ADD_BF16",
+         "tolerance": {"rtol": 1e-2, "atol": 1e-2}, "input_range": {"A": [-5.0, 5.0], "B": [-5.0, 5.0]}}
+      ],
+      "shapes_checked": ["2x160", "1x67", "1x33 (rows x hidden; the kernel sees rows*hidden elements)"],
+      "reference": "A + B in FP32 from the (BF16-rounded) inputs"
+    },
+    {
+      "id": "rms_norm",
+      "summary": "Gemma RMS normalisation of each row, scaled by (1 + weight).",
+      "operation": "for each row x of hidden_size elements: y[j] = x[j] * rsqrt(mean(x^2) + epsilon) * (1 + weight[j])",
+      "source_files": ["rvv_rms_norm.cc", "rvv_common_vec.h"],
+      "variants": [
+        {"dtype": "f32", "entry": "RmsNormF",
+         "signature": "void RmsNormF(size_t seq_len, size_t hidden_size, float epsilon, const float* input, const float* weight, float* output)",
+         "program": "examples/kernel_rms_norm_f32.elf", "marker": "CORAL_KERNEL_RMS_NORM_F32",
+         "tolerance": {"rtol": 1e-6, "atol": 1e-6}, "input_range": {"input": [-1.0, 1.0], "weight": [-0.5, 0.5]}},
+        {"dtype": "bf16", "entry": "RmsNormBf16",
+         "signature": "void RmsNormBf16(size_t seq_len, size_t hidden_size, float epsilon, const __bf16* input, const __bf16* weight, __bf16* output)",
+         "program": "examples/kernel_rms_norm_bf16.elf", "marker": "CORAL_KERNEL_RMS_NORM_BF16",
+         "tolerance": {"rtol": 1e-2, "atol": 1e-2}, "input_range": {"input": [-1.0, 1.0], "weight": [-0.5, 0.5]}}
+      ],
+      "parameters": {"epsilon": 1e-6},
+      "shapes_checked": ["2x160", "1x67", "1x33 (seq_len x hidden_size)"],
+      "reference": "double-precision sum of squares, then FP32 x * (1/sqrt(mean + epsilon)) * (1 + weight)"
+    },
+    {
+      "id": "tanh_gelu_mul",
+      "summary": "Gated activation used in Gemma MLP blocks: tanh-approximated GELU of the gate, multiplied by the up projection.",
+      "operation": "out[i] = 0.5 * g * (1 + tanh(sqrt(2/pi) * (g + 0.044715 * g^3))) * up[i], with g = gate[i]",
+      "source_files": ["rvv_tanh_gelu_mul.cc", "rvv_common_vec.h"],
+      "variants": [
+        {"dtype": "f32", "entry": "rvv_tanh_gelu_mul_f32",
+         "signature": "void rvv_tanh_gelu_mul_f32(const float* gate, const float* up, float* output, size_t total_elements)",
+         "program": "examples/kernel_tanh_gelu_mul_f32.elf", "marker": "CORAL_KERNEL_TANH_GELU_MUL_F32",
+         "tolerance": {"rtol": 1e-2, "atol": 1e-2}, "input_range": {"gate": [-1.0, 1.0], "up": [-1.0, 1.0]}},
+        {"dtype": "bf16", "entry": "rvv_tanh_gelu_mul_bf16",
+         "signature": "void rvv_tanh_gelu_mul_bf16(const __bf16* gate, const __bf16* up, __bf16* output, size_t total_elements)",
+         "program": "examples/kernel_tanh_gelu_mul_bf16.elf", "marker": "CORAL_KERNEL_TANH_GELU_MUL_BF16",
+         "tolerance": {"rtol": 3e-2, "atol": 8e-2}, "input_range": {"gate": [-3.0, 3.0], "up": [-3.0, 3.0]}}
+      ],
+      "shapes_checked": ["2x160", "1x67", "1x33 (rows x hidden; the kernel sees rows*hidden elements)"],
+      "reference": "the formula above in FP32 with libm tanhf",
+      "notes": "The kernel evaluates tanh with a rational approximation clamped to [-3, 3]; the tolerance covers that."
+    },
+    {
+      "id": "matmul_f32",
+      "summary": "FP32 matrix multiply: a GeMV for one row, a tiled kernel for more.",
+      "operation": "C[m][n] = sum over k of A[m][k] * B[k][n]; A is MxK, B is KxN, C is MxN, all row-major",
+      "source_files": ["rvv_matmul.cc"],
+      "variants": [
+        {"dtype": "f32", "entry": "rvv_gemv_1d_f32 (M == 1), rvv_tiled_matmul_2d_f32 (M > 1)",
+         "signature": "void rvv_gemv_1d_f32(const float* A, const float* B, float* C, int K, int N); void rvv_tiled_matmul_2d_f32(const float* A, const float* B, float* C, int M, int K, int N)",
+         "program": "examples/rvv_matmul_fp32.elf", "marker": "CORAL_RVV_MATMUL_FP32",
+         "tolerance": {"exact": true}}
+      ],
+      "shapes_checked": ["1x4x64", "1x5x65", "1x7x33", "2x8x32", "3x7x35", "3x4x96", "1x640x65", "2x4x1024", "1x1x1 (MxKxN)"],
+      "reference": "integer-valued operands, so the products and sums are exact; compared bit for bit",
+      "notes": "Weights live in external RAM at 0x20000000; this program uses the 1 MiB TCM layout. See examples/README.md."
+    },
+    {
+      "id": "matmul_int8",
+      "summary": "INT8 matrix multiply with INT32 accumulation.",
+      "operation": "C[m][n] = sum over k of int32(A[m][k]) * int32(B[k][n]); A is MxK int8, B is KxN int8, C is MxN int32",
+      "source_files": ["rvv_int8_matmul.cc"],
+      "variants": [
+        {"dtype": "int8", "entry": "rvv_gemv_int8 (M == 1), rvv_matmul_int8 (M > 1)",
+         "signature": "void rvv_gemv_int8(const int8_t* A, const int8_t* B, int32_t* C, size_t K, size_t N); void rvv_matmul_int8(const int8_t* A, const int8_t* B, int32_t* C, size_t M, size_t K, size_t N)",
+         "program": "examples/rvv_matmul_int8.elf", "marker": "CORAL_RVV_MATMUL_INT8",
+         "tolerance": {"exact": true}}
+      ],
+      "shapes_checked": ["same set as matmul_f32"],
+      "reference": "scalar integer dot products",
+      "notes": "Either A or B must be quantised symmetrically (-128 on at most one side), otherwise the widening accumulation can overflow."
+    },
+    {
+      "id": "matmul_bf16",
+      "summary": "BF16 matrix multiply with BF16 output.",
+      "operation": "C[m][n] = bf16(sum over k of A[m][k] * B[k][n]); A is MxK, B is KxN, C is MxN, all BF16 row-major",
+      "source_files": ["rvv_bf16_matmul.cc"],
+      "variants": [
+        {"dtype": "bf16", "entry": "rvv_gemv_1d_bf16 (M == 1), rvv_tiled_matmul_2d_bf16 (M > 1)",
+         "signature": "void rvv_gemv_1d_bf16(const __bf16* A, const __bf16* B, __bf16* C, int K, int N); void rvv_tiled_matmul_2d_bf16(const __bf16* A, const __bf16* B, __bf16* C, int M, int K, int N)",
+         "program": "examples/rvv_matmul_bf16.elf", "marker": "CORAL_RVV_MATMUL_BF16",
+         "tolerance": {"exact": true}}
+      ],
+      "shapes_checked": ["same set as matmul_f32"],
+      "reference": "integer-valued operands; the exact sum rounded to BF16 (round to nearest even) must match bit for bit"
+    }
+  ]
+}
