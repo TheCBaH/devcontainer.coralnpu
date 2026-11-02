@@ -1,0 +1,22 @@
+diff --git a/rules/verilator.bzl b/rules/verilator.bzl
+--- a/rules/verilator.bzl
++++ b/rules/verilator.bzl
+@@ -420,6 +420,7 @@
+     if ctx.attr.trace:
+         verilator_flags.append("--trace-vcd" if ctx.attr.trace_format == "vcd" else "--trace-fst")
+ 
++    verilator_flags.append("-O3")
+     for opt in ctx.attr.vopts:
+         verilator_flags.append(opt)
+ 
+diff --git a/fpga/BUILD b/fpga/BUILD
+--- a/fpga/BUILD
++++ b/fpga/BUILD
+@@ -58,6 +58,7 @@
+ )
+ 
+ VERILATOR_OPTIONS_COMMON = [
++    "-O3",
+     "-Wno-ALWCOMBORDER",
+     "-Wno-WIDTHEXPAND",
+     "-Wno-WIDTHTRUNC",

@@ -234,6 +234,8 @@ The devcontainer installs Bazel 9.1.0, the version in
 `coralnpu/.bazelversion`, from its release binary; `make prepare` fails if
 they differ.
 
+Simulators are linked by lld with ThinLTO (clang 19, `llvm-ar`); the MPACT
+simulators are built with `-Os`, and Verilator runs with `-O3`.
 CI runs on native Ubuntu x86_64 and ARM64 runners. `build.json` records
 source revisions, patch hashes and tool versions; notices are under
 `licenses/`. Development stays on `devel` until CI passes. Pushing a
