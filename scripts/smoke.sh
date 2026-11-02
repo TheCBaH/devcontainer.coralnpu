@@ -3,8 +3,10 @@ set -euo pipefail
 ulimit -c 0
 root=$(cd -- "$(dirname -- "$0")" && pwd)
 unset LD_LIBRARY_PATH PYTHONPATH RUNFILES_DIR RUNFILES_MANIFEST_FILE
-# CORAL_SMOKE_GROUPS selects parts of the run (rtl kernels-tcm kernels-highmem uninit contracts host limits); CI shards on it.
-groups=${CORAL_SMOKE_GROUPS:-rtl kernels-tcm kernels-highmem uninit contracts host limits}
+# CORAL_SMOKE_GROUPS selects parts of the run; CI runs the groups in parallel. libc is a quick check
+# that every simulator starts and runs scalar.elf, for libc compatibility.
+all_groups="libc rtl kernels-tcm kernels-highmem uninit matrix-fp32 matrix-int8 matrix-bf16 matrix-vme invalid host limits"
+groups=${CORAL_SMOKE_GROUPS:-$all_groups}
 group() { [[ " $groups " == *" $1 "* ]]; }
 scratch=$(mktemp -d)
 trap 'find "$scratch" -delete' EXIT
@@ -38,6 +40,17 @@ rtl() {
 mpact() {
   check "$1" "$root/bin/$2" --semihost_htif --exit_on_ebreak --max_instructions=100000000 "$root/examples/$3"
 }
+if group libc; then
+  for path in "$root"/bin/*; do
+    sim=${path##*/}
+    if [[ "$sim" = coralnpu_* ]]; then
+      mpact CORAL_SCALAR_PASS "$sim" scalar.elf
+    else
+      case "$sim" in *highmem*|*512kb*) elf=scalar_tcm512k.elf ;; *) elf=scalar.elf ;; esac
+      check CORAL_SCALAR_PASS "$path" --cycles=1000000 --binary="$root/examples/$elf"
+    fi
+  done
+fi
 if group rtl; then
   for sim in core_mini_axi_sim rvv_core_mini_axi_sim vme_core_mini_axi_sim; do
     check CORAL_SCALAR_PASS "$root/bin/$sim" --cycles=1000000 --trace --binary="$root/examples/scalar.elf"
@@ -163,8 +176,10 @@ if group uninit; then
     echo "SRAM fill follows +verilator+rand+reset: $sim"
   done
 fi
-if group contracts; then
-  bash "$root/matrix-memory.sh"
+for kind in fp32 int8 bf16 vme; do
+  if group matrix-$kind; then bash "$root/matrix-memory.sh" $kind; fi
+done
+if group invalid; then
   for sim in "$root"/bin/*; do
     sim=${sim##*/}
     set +e

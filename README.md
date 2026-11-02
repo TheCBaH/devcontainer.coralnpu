@@ -221,11 +221,11 @@ DMA between SRAM, DTCM and ITCM, and bad inputs. Packaging validates every
 manifest against its schema, IDs, artifact hashes and coverage, and agreement
 with the generated elaboration parameters.
 `make test` takes optional arguments (`archive-prefix image [smoke-groups]`)
-and `CORAL_SMOKE_GROUPS` selects parts of an emulator `smoke.sh` (`rtl`,
-`kernels-tcm`, `kernels-highmem`, `uninit`, `contracts`, `host`, `limits`). CI runs each
-archive, image and group as its own job (`.github/workflows/test.yml`), then
-`make results` collects the fixture results. The subsystem simulator is
-built for two Verilator threads and tested on two CPUs.
+and `CORAL_SMOKE_GROUPS` selects parts of an emulator `smoke.sh` (see
+`all_groups` there). CI (`scripts/test-ci.sh`) checks libc compatibility by
+starting every simulator in the Ubuntu and Debian images, then runs the
+groups four at a time on one runner; the subsystem simulator, built for two
+Verilator threads, gets two CPUs. `make results` collects the fixture results.
 `make ci` runs fixture build, packaging and external tests on an x86_64
 Docker host with the development tools installed.
 

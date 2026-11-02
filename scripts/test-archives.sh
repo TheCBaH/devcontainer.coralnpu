@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Usage: test-archives.sh [archive-prefix image [smoke-groups]]
+# Usage: [CORAL_CPUSET=0,1] test-archives.sh [archive-prefix image [smoke-groups]]
 # Without arguments every archive runs in every image and the results are collected; CI shards by
 # archive, image and smoke group, then collects with scripts/fixture_results.py.
 set -euo pipefail
@@ -20,8 +20,8 @@ for archive in "${archives[@]}"; do
   [[ -z "$only_archive" || "$archive" == "$only_archive"-* ]] || continue
   case "$archive" in
     # The subsystem simulator is built for two threads; run it on two CPUs.
-    coralnpu-subsystem-*) images=(python:3.13-slim-trixie) cpus=(--cpuset-cpus=0,1) ;;
-    *) images=(ubuntu:24.04 debian:13-slim) cpus=() ;;
+    coralnpu-subsystem-*) images=(python:3.13-slim-trixie) cpus=(--cpuset-cpus="${CORAL_CPUSET:-0,1}") ;;
+    *) images=(ubuntu:24.04 debian:13-slim) cpus=(${CORAL_CPUSET:+--cpuset-cpus="$CORAL_CPUSET"}) ;;
   esac
   for image in "${images[@]}"; do
     [[ -z "$only_image" || "$image" == "$only_image" ]] || continue
