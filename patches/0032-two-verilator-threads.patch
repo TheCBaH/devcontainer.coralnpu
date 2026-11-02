@@ -1,0 +1,17 @@
+diff --git a/rules/host_cpus.bzl b/rules/host_cpus.bzl
+--- a/rules/host_cpus.bzl
++++ b/rules/host_cpus.bzl
+@@ -32,10 +32,9 @@
+             if stripped.isdigit():
+                 cpus = int(stripped)
+ 
+-    # Verilator past ~8 threads tends to hit scheduling overhead more than
+-    # it gains speedup on typical designs; cap to keep runtime sane even
+-    # on big-iron CI hosts, but never above the host's CPU count.
+-    verilator_threads = min(cpus, 8)
++    # The thread count is compiled into the simulator, so it must not follow
++    # the build host: two threads run on any machine with two CPUs.
++    verilator_threads = 2
+ 
+     # Check for explicit user override in environment
+     env_jobs = repository_ctx.os.environ.get(
