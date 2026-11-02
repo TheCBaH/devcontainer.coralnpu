@@ -61,6 +61,12 @@ SUBSYSTEMS = {
     for variant in ("vector_normal", "vector_highmem", "matrix_normal", "matrix_highmem")
 }
 MPACT_PLATFORM = "--platforms=//toolchain/host_clang:host_clang_platform"
+# Simulators are linked by lld with ThinLTO (bitcode archives need llvm-ar); the MPACT simulator is also
+# built for size. TOOLCHAIN is passed to every Bazel call of a build so the toolchain is configured once.
+TOOLCHAIN = ["--repo_env=AR=llvm-ar", "--action_env=AR=llvm-ar"]
+THINLTO = ["--copt=-flto=thin", "--linkopt=-flto=thin", "--linkopt=-fuse-ld=lld"]
+MPACT_SIZE = ["--copt=-Os"]
+toolchain = []
 
 
 def run(*args, cwd=SOURCE):
@@ -79,12 +85,12 @@ def bazel(*args):
     return run("bazel", "--output_user_root=" + str(cache / "bazel"), *args,
                "--repository_cache=" + str(cache / "repos"),
                "--disk_cache=" + str(cache / "actions"),
-               *jobs, "--verbose_failures")
+               *toolchain, *jobs, "--verbose_failures")
 
 
 def attributes(label):
     output = run("bazel", "--output_user_root=" + str(ROOT / ".cache/bazel"), "query",
-                 "--output=streamed_jsonproto", label)
+                 "--output=streamed_jsonproto", *toolchain, label)
     rule = json.loads(output.splitlines()[0])["rule"]
     values = {}
     for attribute in rule.get("attribute", []):
@@ -118,7 +124,7 @@ def build_cores(targets):
     files, models = {}, {}
     for name, (target, library, module) in targets.items():
         print("Building", target, flush=True)
-        flags = [MPACT_PLATFORM] if target.startswith("@coralnpu_mpact//") else []
+        flags = THINLTO + ([MPACT_PLATFORM, *MPACT_SIZE] if target.startswith("@coralnpu_mpact//") else [])
         bazel("build", "-c", "opt", *flags, target)
         files[name] = output(target, *flags)
         if library:
@@ -132,7 +138,7 @@ def build_subsystems():
     files, models = {}, {}
     for name, (target, variant) in SUBSYSTEMS.items():
         print("Building", target, flush=True)
-        bazel("build", "-c", "opt", "--output_groups=+binary", target)
+        bazel("build", "-c", "opt", *THINLTO, "--output_groups=+binary", target)
         binary, = (SOURCE / "bazel-bin/fpga").glob(
             "*build_chip_verilator_" + variant + "/**/sim-verilator/Vchip_verilator")
         files[name] = str(binary.resolve())
@@ -221,6 +227,7 @@ def main():
             if vector:
                 raise RuntimeError("Vector instruction in scalar fixture " + name + ": " + vector.group(0))
     elif command == "build":
+        toolchain.extend(TOOLCHAIN)
         kinds = sys.argv[2:] or ["emulators"]
         for kind in kinds:
             if kind == "emulators":
