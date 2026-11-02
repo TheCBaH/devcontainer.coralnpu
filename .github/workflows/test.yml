@@ -23,45 +23,18 @@ jobs:
         with:
           name: dist-${{ inputs.arch }}
           path: dist
-      - name: Test libc
+      - name: Test libc, subsystem
         if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh libc
-      - name: Test subsystem
+        run: scripts/test-ci.sh libc subsystem
+      - name: Test rtl, kernels
         if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh subsystem
-      - name: Test rtl
+        run: scripts/test-ci.sh rtl kernels-tcm kernels-highmem
+      - name: Test matrix
         if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh rtl
-      - name: Test kernels-tcm
+        run: scripts/test-ci.sh matrix-fp32 matrix-int8 matrix-bf16 matrix-vme
+      - name: Test host, uninit, invalid, limits
         if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh kernels-tcm
-      - name: Test kernels-highmem
-        if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh kernels-highmem
-      - name: Test uninit
-        if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh uninit
-      - name: Test matrix-fp32
-        if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh matrix-fp32
-      - name: Test matrix-int8
-        if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh matrix-int8
-      - name: Test matrix-bf16
-        if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh matrix-bf16
-      - name: Test matrix-vme
-        if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh matrix-vme
-      - name: Test invalid
-        if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh invalid
-      - name: Test host
-        if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh host
-      - name: Test limits
-        if: ${{ !cancelled() }}
-        run: scripts/test-ci.sh limits
+        run: scripts/test-ci.sh host uninit invalid limits
       - name: Collect fixture results
         run: make results
       - name: Upload verified archives
