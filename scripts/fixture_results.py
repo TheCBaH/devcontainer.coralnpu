@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-"""Writes dist/<archive>.fixture-results.json keyed by configuration ID and artifact hash."""
+"""Writes dist/<archive>.fixture-results.json keyed by configuration ID and artifact hash.
+
+Reads <logs>/<smoke group>/<archive>-<image>.log."""
 import json
 from pathlib import Path
 import re
@@ -14,7 +16,7 @@ def main(dist, logs):
         results = {}
         artifacts = {artifact["path"]: artifact for artifact in document["artifacts"]}
         fixtures = {Path(fixture["path"]).name: fixture for fixture in document.get("fixtures", [])}
-        for log in sorted(logs.glob(archive + "-*.log")):
+        for log in sorted(logs.glob("*/" + archive + "-*.log")):
             image = log.stem[len(archive) + 1:]
             for path, example in re.findall(r"^CORAL_RESULT (\S+) (\S+) pass$", log.read_text(), re.MULTILINE):
                 artifact = artifacts[path]
@@ -33,7 +35,8 @@ def main(dist, logs):
                     "result": "pass",
                     "runtime_images": [],
                 })
-                entry["runtime_images"].append(image)
+                if image not in entry["runtime_images"]:
+                    entry["runtime_images"].append(image)
         for fixture in document.get("fixtures", []):
             for configuration in fixture["configurations"]:
                 if not any(key[0] == configuration and key[2] == Path(fixture["path"]).name for key in results):
