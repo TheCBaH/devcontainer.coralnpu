@@ -12,13 +12,8 @@ permissions:
   contents: read
 jobs:
   test:
-    name: ${{ matrix.test }}
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        test: [libc, subsystem, rtl, kernels-tcm, kernels-highmem, uninit, matrix-fp32, matrix-int8, matrix-bf16, matrix-vme, invalid, host, limits]
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
         with:
@@ -28,33 +23,8 @@ jobs:
         with:
           name: dist-${{ inputs.arch }}
           path: dist
-      - name: Test
-        run: scripts/test-ci.sh ${{ matrix.test }}
-      - name: Upload results
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: results-${{ inputs.arch }}-${{ matrix.test }}
-          path: .cache/results
-          include-hidden-files: true
-          if-no-files-found: ignore
-  verify:
-    needs: test
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          submodules: false
-          persist-credentials: false
-      - uses: actions/download-artifact@v8
-        with:
-          name: dist-${{ inputs.arch }}
-          path: dist
-      - uses: actions/download-artifact@v8
-        with:
-          pattern: results-${{ inputs.arch }}-*
-          path: .cache/results
-          merge-multiple: true
+      - name: Test archives
+        run: scripts/test-ci.sh
       - name: Collect fixture results
         run: make results
       - name: Upload verified archives
