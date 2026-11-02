@@ -222,11 +222,10 @@ manifest against its schema, IDs, artifact hashes and coverage, and agreement
 with the generated elaboration parameters.
 `make test` takes optional arguments (`archive-prefix image [smoke-groups]`)
 and `CORAL_SMOKE_GROUPS` selects parts of an emulator `smoke.sh` (see
-`all_groups` there). CI runs `scripts/test-ci.sh`, which starts every
-simulator in the Ubuntu and Debian images (libc compatibility), tests the
-subsystem archive on two CPUs (its simulator is built for two Verilator
-threads) and runs the `smoke.sh` groups four at a time, each as a log group
-with its duration; `scripts/test-ci.sh <name>` runs one. `make results`
+`all_groups` there). CI runs each test as its own step with
+`scripts/test-ci.sh <name>` (`libc` starts every simulator in the Ubuntu and
+Debian images; `subsystem` runs on two CPUs, its simulator being built for two
+Verilator threads; the rest are `smoke.sh` groups), then `make results`
 collects the fixture results.
 `make ci` runs fixture build, packaging and external tests on an x86_64
 Docker host with the development tools installed.

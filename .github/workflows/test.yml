@@ -13,7 +13,7 @@ permissions:
 jobs:
   test:
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
         with:
@@ -23,8 +23,45 @@ jobs:
         with:
           name: dist-${{ inputs.arch }}
           path: dist
-      - name: Test archives
-        run: scripts/test-ci.sh
+      - name: Test libc
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh libc
+      - name: Test subsystem
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh subsystem
+      - name: Test rtl
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh rtl
+      - name: Test kernels-tcm
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh kernels-tcm
+      - name: Test kernels-highmem
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh kernels-highmem
+      - name: Test uninit
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh uninit
+      - name: Test matrix-fp32
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh matrix-fp32
+      - name: Test matrix-int8
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh matrix-int8
+      - name: Test matrix-bf16
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh matrix-bf16
+      - name: Test matrix-vme
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh matrix-vme
+      - name: Test invalid
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh invalid
+      - name: Test host
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh host
+      - name: Test limits
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh limits
       - name: Collect fixture results
         run: make results
       - name: Upload verified archives
