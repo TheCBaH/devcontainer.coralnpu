@@ -77,7 +77,9 @@ instruction subsets are not established as equivalent by these smoke tests.
 
 The matrix memory fixtures run on the packaged simulators without rebuilding
 an emulator. `bash matrix-memory.sh` checks all four fixtures and verifies
-that corrupting an initialized external input makes each one fail.
+that corrupting an initialized external input makes each one fail. The
+RVV fixtures also run on MPACT M3 and M4, where `--semihost_htif` maps the
+ELF's segments; the `kernel_*` programs run there too.
 
 `rvv_matmul_{fp32,int8,bf16}.elf` calls the pinned upstream Gemma GeMV and
 2D matrix kernels. Its standalone driver supplies deterministic signed inputs,

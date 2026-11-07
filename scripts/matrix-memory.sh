@@ -30,6 +30,18 @@ for kind; do
   test "$status" -eq 0
   grep -q "${marker}_PASS" output.log
   echo "CORAL_RESULT bin/$sim $elf pass"
+  if [ "$kind" != vme ]; then
+    for mpact_sim in coralnpu_m3_sim coralnpu_m4_sim; do
+      echo "Checking $elf on $mpact_sim"
+      status=0
+      timeout --kill-after=5 900 "$root/bin/$mpact_sim" --semihost_htif --exit_on_ebreak \
+        --max_instructions=1000000000 "$root/examples/$elf" >mpact.log 2>&1 || status=$?
+      tail -n 20 mpact.log
+      test "$status" -eq 0
+      grep -q "${marker}_PASS" mpact.log
+      echo "CORAL_RESULT bin/$mpact_sim $elf pass"
+    done
+  fi
 
   cp "$root/examples/$elf" corrupt.elf
   chmod u+w corrupt.elf

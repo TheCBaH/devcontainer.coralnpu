@@ -158,7 +158,7 @@ def rtl_isa(kind, parameters):
         vector = {"supported": True, "vlen_bits": parameters.get("rvvVlen", 128), "elen_bits": 32,
                   "floating_point": True}
         if parameters.get("enableVectorBf16", True):
-            extensions.append("zvfbfmin")
+            extensions += ["zvfbfmin", "zvfbfwma"]
     else:
         disabled += ["--enableRvv", "--enableVectorBf16"]
     if kind == "vme":
@@ -310,8 +310,8 @@ def standalone(executable, elaboration, header, revision):
 
 MPACT_ISA = {
     "v2": (["i", "m", "f", "zicsr", "zifencei", "zbb", "zve32x"], False, False, False),
-    "m3": (["i", "m", "f", "zicsr", "zifencei", "zbb", "zve32x", "zve32f", "zvfbfmin"], True, True, False),
-    "m4": (["i", "m", "f", "zicsr", "zifencei", "zbb", "zve32x", "zve32f", "zvfbfmin", "zvt"], True, True, True),
+    "m3": (["i", "m", "f", "zicsr", "zifencei", "zbb", "zve32x", "zve32f", "zvfbfmin", "zvfbfwma"], True, True, False),
+    "m4": (["i", "m", "f", "zicsr", "zifencei", "zbb", "zve32x", "zve32f", "zvfbfmin", "zvfbfwma", "zvt"], True, True, True),
 }
 
 

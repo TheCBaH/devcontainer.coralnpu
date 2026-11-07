@@ -149,6 +149,15 @@ for sim in rvv_core_mini_itcm512kb_dtcm512kb_axi_sim rvv_core_mini_highmem_axi_s
   rtl CORAL_RVV_PASS "$sim" rvv_tcm512k.elf
   rtl CORAL_RVV_FP_PASS "$sim" rvv_fp_tcm512k.elf
 done
+if group kernels-tcm; then
+  for sim in coralnpu_m3_sim coralnpu_m4_sim; do
+    for elf in "$root"/examples/kernel_*.elf; do
+      name=${elf##*/}
+      name=${name%.elf}
+      mpact "CORAL_${name^^}_PASS" "$sim" "$name.elf"
+    done
+  done
+fi
 if group uninit; then
   bash "$root/smoke-vcd.sh"
   uninit() {
