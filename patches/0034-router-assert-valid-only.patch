@@ -1,0 +1,13 @@
+diff --git a/hdl/chisel/src/common/Router.scala b/hdl/chisel/src/common/Router.scala
+index cd261f56..a2ab26dd 100644
+--- a/hdl/chisel/src/common/Router.scala
++++ b/hdl/chisel/src/common/Router.scala
+@@ -25,7 +25,7 @@ class Router[T <: Data](gen: T, n: Int, route: T => Seq[Bool]) extends Module {
+ 
+   // 1. Evaluate the routing function to get our one-hot selection vector
+   val sel = route(io.in.bits)
+-  assert(PopCount(sel) === 1.U)
++  assert(!io.in.valid || PopCount(sel) === 1.U)
+ 
+   for (i <- 0 until n) {
+     // 2. Broadcast the payload to all outputs

@@ -1,8 +1,8 @@
 diff --git a/hdl/chisel/src/coralnpu/BUILD b/hdl/chisel/src/coralnpu/BUILD
-index 879092dc..ae2354cc 100644
+index 0ba0d4c7..87ffb2e5 100644
 --- a/hdl/chisel/src/coralnpu/BUILD
 +++ b/hdl/chisel/src/coralnpu/BUILD
-@@ -643,6 +643,7 @@ chisel_cc_library(
+@@ -633,6 +633,7 @@ chisel_cc_library(
          "--moduleName=CoreMini",
          "--useAxi",
          "--itcmSizeKBytes=1024",
@@ -10,7 +10,7 @@ index 879092dc..ae2354cc 100644
          "--dtcmSizeKBytes=1024",
      ],
      module_name = "CoreMiniHighmemAxi",
-@@ -665,6 +666,7 @@ chisel_cc_library(
+@@ -655,6 +656,7 @@ chisel_cc_library(
          "--moduleName=CoreMini",
          "--useAxi",
          "--itcmSizeKBytes=512",
@@ -18,7 +18,7 @@ index 879092dc..ae2354cc 100644
          "--dtcmSizeKBytes=512",
      ],
      module_name = "CoreMini_ITCM512KB_DTCM512KBAxi",
-@@ -765,6 +767,7 @@ template_rule(
+@@ -755,6 +757,7 @@ template_rule(
              ],
              "gen_flags": [
                  "--moduleName=RvvCoreMini",
@@ -26,7 +26,7 @@ index 879092dc..ae2354cc 100644
                  "--itcmSizeKBytes=1024",
                  "--dtcmSizeKBytes=1024",
                  # Highmem naming is handled in Core.scala
-@@ -778,6 +781,7 @@ template_rule(
+@@ -768,6 +771,7 @@ template_rule(
              ],
              "gen_flags": [
                  "--moduleName=RvvCoreMini",

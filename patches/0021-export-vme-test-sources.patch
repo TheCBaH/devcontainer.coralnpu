@@ -1,5 +1,5 @@
 diff --git a/tests/cocotb/vme_test/BUILD b/tests/cocotb/vme_test/BUILD
-index f8d75b77..647e9408 100644
+index cfcab8fa..aaf52079 100644
 --- a/tests/cocotb/vme_test/BUILD
 +++ b/tests/cocotb/vme_test/BUILD
 @@ -16,6 +16,9 @@ load("@coralnpu_hw//third_party/python:requirements.bzl", "requirement")

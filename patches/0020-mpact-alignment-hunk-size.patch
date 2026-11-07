@@ -1,8 +1,8 @@
 diff --git a/third_party/patches/mpact_riscv_zvt_alignment.patch b/third_party/patches/mpact_riscv_zvt_alignment.patch
-index 8272edf4..4b335296 100644
+index 994ce354..7b1695ae 100644
 --- a/third_party/patches/mpact_riscv_zvt_alignment.patch
 +++ b/third_party/patches/mpact_riscv_zvt_alignment.patch
-@@ -767,7 +767,7 @@ index 9a7965b..1c70e2e 100644
+@@ -790,7 +790,7 @@ index 9a7965b..1c70e2e 100644
     CHECK(row >= 0 && row < kEffectiveTileEdge) << "row out of bounds";
     CHECK(col >= 0 && col < kEffectiveTileEdge) << "col out of bounds";
     switch (tile_element_width) {

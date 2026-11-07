@@ -231,9 +231,8 @@ mnemonics. Encodings follow the pinned
 and [Zvt format](https://github.com/google/mpact-riscv/blob/e4f1e9c1b243954ff8388fd39019248b2ae7341a/riscv/riscv_zvt.bin_fmt).
 The upstream [matrix operation tests](https://github.com/google-coral/coralnpu-mpact/blob/7670ee4c3df4cbc0ea06220c39a19b5d14338ed6/sim/test/coralnpu_m4_ops_test.cc)
 provide independent scalar expected results for these operations.
-The pinned M4 binary decoder omits M3's BF16-conversion instruction group;
-the wrapper applies `provenance/mpact-patches/m4-bf16-decoder.patch` to restore
-that inherited instruction. The FP/BF16 example tests this path on both models.
+M3 and M4 decode the scalar and vector BF16 conversions and `vfwmaccbf16`
+(Zvfbfwma). The FP/BF16 example tests the conversions on both models.
 Upstream MPACT accepts the matrix alternate-format bit for SEW ≤ 16 and sets
 vill above it; the BF16 matrix case exercises configuration and arithmetic.
 

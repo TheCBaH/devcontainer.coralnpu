@@ -16,10 +16,10 @@ index 9afa252d..1924414b 100644
              vthreads = verilator_threads,
              mjobs = make_jobs,
 diff --git a/rules/repo_defs.bzl b/rules/repo_defs.bzl
-index ae2b8057..7c46ee2a 100644
+index 3c095677..9f213cde 100644
 --- a/rules/repo_defs.bzl
 +++ b/rules/repo_defs.bzl
-@@ -258,17 +258,18 @@ ot_python_deps_compat = repository_rule(
+@@ -259,17 +259,18 @@ ot_python_deps_compat = repository_rule(
  )
  
  def _python311_compat_impl(rctx):

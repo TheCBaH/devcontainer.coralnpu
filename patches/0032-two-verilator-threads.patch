@@ -1,7 +1,8 @@
 diff --git a/rules/host_cpus.bzl b/rules/host_cpus.bzl
+index 1924414b..57806864 100644
 --- a/rules/host_cpus.bzl
 +++ b/rules/host_cpus.bzl
-@@ -32,10 +32,9 @@
+@@ -32,10 +32,9 @@ def _host_cpus_impl(repository_ctx):
              if stripped.isdigit():
                  cpus = int(stripped)
  

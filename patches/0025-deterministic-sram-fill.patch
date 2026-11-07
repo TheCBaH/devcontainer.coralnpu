@@ -76,15 +76,14 @@ index 516d2311..0d993949 100644
  
  void sram_read(void *handle, uint32_t addr, svBitVecVal *data) {
 diff --git a/hw_sim/core_mini_axi_simulator.cc b/hw_sim/core_mini_axi_simulator.cc
-index c9557244..b5d1a84d 100644
+index 35b2ca70..a694a49f 100644
 --- a/hw_sim/core_mini_axi_simulator.cc
 +++ b/hw_sim/core_mini_axi_simulator.cc
-@@ -44,7 +44,7 @@ constexpr int kDefaultTimeoutCycles = 10000;
- class CoreMiniAxiSimulator final : public CoralNPUSimulator {
+@@ -65,6 +65,7 @@ class CoreMiniAxiSimulator final : public CoralNPUSimulator {
   public:
    explicit CoreMiniAxiSimulator(const CoralNPUSimulatorOptions &options = {})
--      : context_(), wrapper_(&context_, options) {
-+      : context_(), wrapper_((context_.commandArgs(0, static_cast<const char **>(nullptr)), &context_), options) {
-     ddr_memory_.resize(1024 * 1024 * 1024, 0);  // 1GB DDR
-     auto read_cb = [this](const AxiAddr &axi_addr) { return this->ReadCallback(axi_addr); };
-     wrapper_.RegisterReadCallback(read_cb);
+       : context_(), options_(options) {
++    context_.commandArgs(0, static_cast<const char **>(nullptr));
+     // Match the models' --threads; the context defaults to one per host CPU.
+     // threads() also turns on worker CPU pinning, which only adds startup cost.
+     context_.threads(CORALNPU_VERILATOR_THREADS);

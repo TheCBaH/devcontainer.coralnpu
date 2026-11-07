@@ -20,10 +20,10 @@ index 5a653de2..e91d2a7a 100644
 +        trace = False,
 +    )
 diff --git a/tests/verilator_sim/BUILD b/tests/verilator_sim/BUILD
-index a0f1a203..b085b9cb 100644
+index 15566d45..0ab3a8d6 100644
 --- a/tests/verilator_sim/BUILD
 +++ b/tests/verilator_sim/BUILD
-@@ -354,3 +354,33 @@ cc_test(
+@@ -323,3 +323,33 @@ cc_test(
          "@verilator//:libverilator",
      ],
  )

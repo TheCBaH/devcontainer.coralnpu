@@ -1,8 +1,8 @@
 diff --git a/.bazelrc b/.bazelrc
-index 286256a4..de3efd97 100644
+index 53f1c04a..816409c6 100644
 --- a/.bazelrc
 +++ b/.bazelrc
-@@ -174,3 +174,7 @@ build --strategy=SpyGlassLint=local
+@@ -182,3 +182,7 @@ build --strategy=SpyGlassLint=local
  
  # Import user config, if it exists (gitignored).
  try-import %workspace%/.bazelrc.user
@@ -306,10 +306,10 @@ index 00000000..99c61192
 +  return failures == 0 ? 0 : 1;
 +}
 diff --git a/tests/verilator_sim/BUILD b/tests/verilator_sim/BUILD
-index cd559dbf..969a4b0f 100644
+index efea51f0..1c600924 100644
 --- a/tests/verilator_sim/BUILD
 +++ b/tests/verilator_sim/BUILD
-@@ -316,3 +316,14 @@ cc_test(
+@@ -285,3 +285,14 @@ cc_test(
          "//hdl/chisel/src/coralnpu:dbus2axi_cc_library",
      ],
  )

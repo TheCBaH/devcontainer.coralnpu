@@ -1,18 +1,8 @@
-diff --git a/rules/verilator.bzl b/rules/verilator.bzl
---- a/rules/verilator.bzl
-+++ b/rules/verilator.bzl
-@@ -420,6 +420,7 @@
-     if ctx.attr.trace:
-         verilator_flags.append("--trace-vcd" if ctx.attr.trace_format == "vcd" else "--trace-fst")
- 
-+    verilator_flags.append("-O3")
-     for opt in ctx.attr.vopts:
-         verilator_flags.append(opt)
- 
 diff --git a/fpga/BUILD b/fpga/BUILD
+index 2837403a..25b4a97d 100644
 --- a/fpga/BUILD
 +++ b/fpga/BUILD
-@@ -58,6 +58,7 @@
+@@ -58,6 +58,7 @@ filegroup(
  )
  
  VERILATOR_OPTIONS_COMMON = [
@@ -20,3 +10,15 @@ diff --git a/fpga/BUILD b/fpga/BUILD
      "-Wno-ALWCOMBORDER",
      "-Wno-WIDTHEXPAND",
      "-Wno-WIDTHTRUNC",
+diff --git a/rules/verilator.bzl b/rules/verilator.bzl
+index 3c5dc3cf..da09370a 100644
+--- a/rules/verilator.bzl
++++ b/rules/verilator.bzl
+@@ -420,6 +420,7 @@ def _verilator_cc_library_impl(ctx):
+     if ctx.attr.trace:
+         verilator_flags.append("--trace-vcd" if ctx.attr.trace_format == "vcd" else "--trace-fst")
+ 
++    verilator_flags.append("-O3")
+     for opt in ctx.attr.vopts:
+         verilator_flags.append(opt)
+ 
