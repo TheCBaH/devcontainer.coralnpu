@@ -21,13 +21,16 @@ ARCHIVES = {
     "emulators": "coralnpu-emulators-linux-",
     "subsystem": "coralnpu-subsystem-linux-",
 }
+VME_DDR = "vme-core-mini-axi-ddr"
+RVV_DDR = "rvv-core-mini-highmem-axi-ddr"
+MPACT_DDR = ["mpact-v2-ddr", "mpact-m3-ddr", "mpact-m4-ddr"]
 # Example ELF: (success marker, configurations it runs on, linker layout).
 EXAMPLES = {
     "emulators": {
         "batch_limits.elf": ("CORAL_MPACT_LIMITS_PASS", ["mpact-v2", "mpact-m3", "mpact-m4"],
                              "itcm8k_dtcm32k.ld"),
         "scalar.elf": ("CORAL_SCALAR_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
-                                             "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
+                                             VME_DDR, "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
         "rvv.elf": ("CORAL_RVV_PASS", ["rvv-core-mini-axi", "vme-core-mini-axi", "mpact-v2", "mpact-m3",
                                        "mpact-m4"], "itcm8k_dtcm32k.ld"),
         "rvv_fp.elf": ("CORAL_RVV_FP_PASS", ["rvv-core-mini-axi", "vme-core-mini-axi", "mpact-m3", "mpact-m4"],
@@ -44,25 +47,26 @@ EXAMPLES = {
         "matrix.elf": ("CORAL_MATRIX_PASS", ["vme-core-mini-axi", "mpact-m4"], "itcm8k_dtcm32k.ld"),
         **{name + ".elf": ("CORAL_VME_TEST_PASS", ["vme-core-mini-axi", "mpact-m4"], "itcm8k_dtcm32k.ld")
            for name in VME_TESTS},
-        "host_io.elf": ("CORAL_HOST_IO_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
+        "host_io.elf": ("CORAL_HOST_IO_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi", VME_DDR,
                                                "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
         "host_io_tcm512k.elf": ("CORAL_HOST_IO_PASS", ["core-mini-itcm512kb-dtcm512kb-axi",
-            "core-mini-highmem-axi", "rvv-core-mini-itcm512kb-dtcm512kb-axi", "rvv-core-mini-highmem-axi"],
+            "core-mini-highmem-axi", "rvv-core-mini-itcm512kb-dtcm512kb-axi", "rvv-core-mini-highmem-axi", RVV_DDR],
             "itcm512k_dtcm512k.ld"),
-        "host_ram.elf": ("CORAL_HOST_RAM_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
+        "host_ram.elf": ("CORAL_HOST_RAM_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi", VME_DDR,
                                                  "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
         "host_ram_tcm512k.elf": ("CORAL_HOST_RAM_PASS", ["core-mini-itcm512kb-dtcm512kb-axi",
-            "core-mini-highmem-axi", "rvv-core-mini-itcm512kb-dtcm512kb-axi", "rvv-core-mini-highmem-axi"],
+            "core-mini-highmem-axi", "rvv-core-mini-itcm512kb-dtcm512kb-axi", "rvv-core-mini-highmem-axi", RVV_DDR],
             "itcm512k_dtcm512k.ld"),
         "exit_status.elf": ("CORAL_EXIT_STATUS_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
-                                                        "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
+                                                        VME_DDR, "mpact-v2", "mpact-m3", "mpact-m4"],
+                            "itcm8k_dtcm32k.ld"),
         "exit_status_tcm512k.elf": ("CORAL_EXIT_STATUS_PASS", ["core-mini-itcm512kb-dtcm512kb-axi",
-            "core-mini-highmem-axi", "rvv-core-mini-itcm512kb-dtcm512kb-axi", "rvv-core-mini-highmem-axi"],
+            "core-mini-highmem-axi", "rvv-core-mini-itcm512kb-dtcm512kb-axi", "rvv-core-mini-highmem-axi", RVV_DDR],
             "itcm512k_dtcm512k.ld"),
-        "uninit_tcm.elf": ("CORAL_UNINIT_TCM_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi"],
-                           "itcm8k_dtcm32k.ld"),
+        "uninit_tcm.elf": ("CORAL_UNINIT_TCM_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
+                                                      VME_DDR], "itcm8k_dtcm32k.ld"),
         "uninit_tcm_tcm512k.elf": ("CORAL_UNINIT_TCM_PASS", ["core-mini-itcm512kb-dtcm512kb-axi",
-            "core-mini-highmem-axi", "rvv-core-mini-itcm512kb-dtcm512kb-axi", "rvv-core-mini-highmem-axi"],
+            "core-mini-highmem-axi", "rvv-core-mini-itcm512kb-dtcm512kb-axi", "rvv-core-mini-highmem-axi", RVV_DDR],
             "itcm512k_dtcm512k.ld"),
         "x0_load.elf": ("CORAL_X0_LOAD_PASS", ["core-mini-axi", "rvv-core-mini-axi", "vme-core-mini-axi",
                                                "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
@@ -78,7 +82,8 @@ EXAMPLES = {
                                              "mpact-v2", "mpact-m3", "mpact-m4"], "itcm8k_dtcm32k.ld"),
         "scalar_tcm512k.elf": ("CORAL_SCALAR_PASS", ["core-mini-itcm512kb-dtcm512kb-axi", "core-mini-highmem-axi",
                                                      "rvv-core-mini-itcm512kb-dtcm512kb-axi",
-                                                     "rvv-core-mini-highmem-axi"], "itcm512k_dtcm512k.ld"),
+                                                     "rvv-core-mini-highmem-axi", RVV_DDR],
+                               "itcm512k_dtcm512k.ld"),
         "rvv_tcm512k.elf": ("CORAL_RVV_PASS", ["rvv-core-mini-itcm512kb-dtcm512kb-axi",
                                                "rvv-core-mini-highmem-axi"], "itcm512k_dtcm512k.ld"),
         "rvv_fp_tcm512k.elf": ("CORAL_RVV_FP_PASS", ["rvv-core-mini-itcm512kb-dtcm512kb-axi",
@@ -88,6 +93,14 @@ EXAMPLES = {
                                                      "rvv-core-mini-highmem-axi"], "itcm512k_dtcm512k.ld"),
         "memory_tcm1m.elf": ("CORAL_MEMORY_PASS", ["core-mini-highmem-axi", "rvv-core-mini-highmem-axi"],
                              "itcm1m_dtcm1m.ld"),
+        # The simulated DDR: scripts/ddr-tests.sh.
+        "ddr_payload.elf": ("CORAL_DDR_PAYLOAD_PASS", [VME_DDR, *MPACT_DDR], "itcm8k_dtcm32k_ddr1g.ld"),
+        "ddr_htif.elf": ("CORAL_DDR_HTIF_PASS", [VME_DDR, *MPACT_DDR], "itcm8k_dtcm32k_ddr1g.ld"),
+        "ddr_payload_tcm1m.elf": ("CORAL_DDR_PAYLOAD_PASS", [RVV_DDR, *MPACT_DDR[1:]], "itcm1m_dtcm1m_ddr1g.ld"),
+        "ddr_htif_tcm1m.elf": ("CORAL_DDR_HTIF_PASS", [RVV_DDR, *MPACT_DDR[1:]], "itcm1m_dtcm1m_ddr1g.ld"),
+        "ddr_rvv_tcm1m.elf": ("CORAL_DDR_RVV_PASS", [RVV_DDR, *MPACT_DDR[1:]], "itcm1m_dtcm1m_ddr1g.ld"),
+        "rvv_matmul_ddr_int8.elf": ("CORAL_RVV_MATMUL_DDR_INT8_PASS", [RVV_DDR, *MPACT_DDR[1:]],
+                                    "itcm1m_dtcm1m_ddr1g.ld"),
     },
     "subsystem": {
         "subsystem_dma.elf": ("CORAL_SUBSYSTEM_DMA_PASS", ["subsystem-vector-normal", "subsystem-matrix-normal"],
@@ -204,6 +217,9 @@ def configurations(kind, outputs, revision):
     for name, base in {**VCD_SIMULATORS, **FAST_SIMULATORS}.items():
         if name in outputs["files"]:
             records[name] = records[base]
+    if kind == "emulators":
+        for name in manifest.MPACT:
+            records[manifest.mpact_ddr_launcher(name)] = manifest.finalize(manifest.mpact(name, revision, ddr=True))
     return records
 
 
@@ -234,6 +250,7 @@ def package(kind):
         shutil.rmtree(bundle)
     for directory in ("bin", "lib", "examples", "licenses", "provenance", "linker"):
         (bundle / directory).mkdir(parents=True, exist_ok=True)
+    launchers = [manifest.mpact_ddr_launcher(name) for name in manifest.MPACT] if kind == "emulators" else []
     revision = run("git", "rev-parse", "HEAD", cwd=ROOT / "coralnpu")
     records = configurations(kind, outputs, revision)
     placed = []
@@ -286,6 +303,11 @@ def package(kind):
         shutil.copy2(ROOT / "scripts/smoke-vcd.sh", bundle / "smoke-vcd.sh")
         shutil.copy2(ROOT / "scripts/matrix-memory.sh", bundle / "matrix-memory.sh")
         shutil.copy2(ROOT / "scripts/mpact-limits.sh", bundle / "mpact-limits.sh")
+        shutil.copy2(ROOT / "scripts/ddr-tests.sh", bundle / "ddr-tests.sh")
+        (bundle / "launchers").mkdir()
+        for launcher in launchers:
+            shutil.copy2(ROOT / "scripts/mpact-ddr.sh", bundle / launcher)
+            (bundle / launcher).chmod(0o755)
     else:
         tools = bundle / "tools"
         tools.mkdir()
@@ -319,7 +341,10 @@ def package(kind):
         "configurations": sorted({record["id"]: record for record in records.values()}.values(),
                                  key=lambda record: record["name"]),
         "artifacts": [artifact(bundle, relative, records[filename], kind, lib_files + runtime)
-                      for _, _, filename, relative in sorted(placed, key=lambda item: item[3])],
+                      for _, _, filename, relative in sorted(placed, key=lambda item: item[3])] + [
+            artifact(bundle, launcher, records[launcher], kind,
+                     ["bin/" + launcher.split("/")[1].replace("_ddr_sim", "_sim"), *lib_files, *runtime])
+            for launcher in launchers],
         "fixtures": [{"path": "examples/" + example, "sha256": manifest.sha256(bundle / "examples" / example),
                       "marker": marker, "linker_layout": "linker/" + layout,
                       "configurations": sorted({record["id"] for record in records.values()
@@ -335,7 +360,7 @@ def package(kind):
         "wrapper_commit": document["archive"]["wrapper_revision"],
         "upstream_commit": revision,
         "configuration_manifest": "hardware-configurations.json",
-        "files": sorted(relative for _, _, _, relative in placed),
+        "files": sorted([relative for _, _, _, relative in placed] + launchers),
         "examples": sorted(EXAMPLES[kind]),
         "isa": isa,
         "catalogs": sorted(catalogs),

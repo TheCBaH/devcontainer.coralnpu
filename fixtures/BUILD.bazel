@@ -242,3 +242,56 @@ coralnpu_v2_binary(
     enable_vmem = False,
     stack_size_bytes = 2048,
 )
+
+# The simulated DDR: 1 GiB at 0x80000000, the extent of the linker region and of the testbench backing.
+DDR_MBYTES = 1024
+DDR_DEFINE = "-DCORAL_DDR_BYTES=%d" % (DDR_MBYTES * 1024 * 1024)
+
+[coralnpu_v2_binary(
+    name = "ddr_payload" + suffix,
+    srcs = ["ddr_payload.cc"],
+    copts = ["-march=rv32imf_zicsr_zifencei_zbb", "-Os", DDR_DEFINE],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+    itcm_size_kbytes = tcm[0],
+    dtcm_size_kbytes = tcm[1],
+    ddr_size_mbytes = DDR_MBYTES,
+) for suffix, tcm in [("", (8, 32)), ("_tcm1m", (1024, 1024))]]
+
+coralnpu_v2_binary(
+    name = "ddr_rvv_tcm1m",
+    srcs = ["ddr_payload.cc"],
+    copts = ["-fno-tree-vectorize", "-fno-tree-slp-vectorize", "-Os", "-DCORAL_RVV", DDR_DEFINE],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+    itcm_size_kbytes = 1024,
+    dtcm_size_kbytes = 1024,
+    ddr_size_mbytes = DDR_MBYTES,
+)
+
+[coralnpu_v2_binary(
+    name = "ddr_htif" + suffix,
+    srcs = ["ddr_htif.cc"],
+    copts = ["-march=rv32imf_zicsr_zifencei_zbb", "-Os", DDR_DEFINE],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+    itcm_size_kbytes = tcm[0],
+    dtcm_size_kbytes = tcm[1],
+    ddr_size_mbytes = DDR_MBYTES,
+) for suffix, tcm in [("", (8, 32)), ("_tcm1m", (1024, 1024))]]
+
+# An INT8 product whose right-hand matrix is 4.5 MiB of initialized DDR.
+coralnpu_v2_binary(
+    name = "rvv_matmul_ddr_int8",
+    srcs = ["rvv_matmul.cc", "//tests/cocotb/rvv/ml_ops/gemma_kernels:rvv_int8_matmul.cc"],
+    copts = ["-fno-tree-vectorize", "-fno-tree-slp-vectorize", "-DCORAL_MATMUL_INT8", "-DCORAL_DDR", DDR_DEFINE],
+    semihosting = True,
+    enable_vmem = False,
+    stack_size_bytes = 2048,
+    itcm_size_kbytes = 1024,
+    dtcm_size_kbytes = 1024,
+    ddr_size_mbytes = DDR_MBYTES,
+)

@@ -13,7 +13,7 @@ permissions:
 jobs:
   test:
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 120
+    timeout-minutes: ${{ inputs.arch == 'aarch64' && 240 || 180 }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -35,6 +35,11 @@ jobs:
       - name: Test host, uninit, invalid, limits
         if: ${{ !cancelled() }}
         run: scripts/test-ci.sh host uninit invalid limits
+      - name: Test ddr
+        if: ${{ !cancelled() }}
+        env:
+          CORAL_DDR_TIMEOUT: '3600'
+        run: scripts/test-ci.sh ddr-rtl ddr-mpact ddr-host
       - name: Collect fixture results
         run: make results
       - name: Upload verified archives

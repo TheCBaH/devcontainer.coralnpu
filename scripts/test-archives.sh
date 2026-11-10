@@ -27,7 +27,8 @@ for archive in "${archives[@]}"; do
     [[ -z "$only_image" || "$image" == "$only_image" ]] || continue
     docker run --rm --network=none "${cpus[@]}" \
       --mount "type=bind,src=$root/dist,dst=/archives,readonly" \
-      -e ARCHIVE="$archive" ${only_groups:+-e CORAL_SMOKE_GROUPS="$only_groups"} "$image" bash -euo pipefail -c '
+      -e ARCHIVE="$archive" -e CORAL_DDR_TIMEOUT \
+      ${only_groups:+-e CORAL_SMOKE_GROUPS="$only_groups"} "$image" bash -euo pipefail -c '
         mkdir -p /tmp/relocated
         tar -xzf "/archives/$ARCHIVE" -C /tmp/relocated
         bundle=/tmp/relocated/${ARCHIVE%.tar.gz}

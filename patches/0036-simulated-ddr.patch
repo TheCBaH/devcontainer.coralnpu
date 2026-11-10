@@ -1,0 +1,311 @@
+diff --git a/rules/coralnpu_v2.bzl b/rules/coralnpu_v2.bzl
+index 9dd3484..61934e9 100644
+--- a/rules/coralnpu_v2.bzl
++++ b/rules/coralnpu_v2.bzl
+@@ -228,6 +228,7 @@ def coralnpu_v2_binary(
+         stack_size_bytes = 128,
+         heap_size = "",
+         heap_location = "DTCM",
++        ddr_size_mbytes = 2048,
+         enable_vmem = True,
+         crt = None,
+         **kwargs):
+@@ -246,6 +247,7 @@ def coralnpu_v2_binary(
+       stack_size_bytes: Size of stack in bytes.
+       heap_size: Size of heap (e.g. "1K", "128M").
+       heap_location: Memory region for heap ("DTCM", "EXTMEM", "DDR").
++      ddr_size_mbytes: Size of the DDR region in MBytes.
+       enable_vmem: Whether to generate a VMEM file.
+       crt: Optional label for custom CRT. If not provided, uses default CRT.
+       **kwargs: Additional arguments forward to cc_binary.
+@@ -272,13 +274,15 @@ def coralnpu_v2_binary(
+         _DEFAULT_STACK_SIZE_BYTES = 128
+         _DEFAULT_HEAP_SIZE = ""
+         _DEFAULT_HEAP_LOCATION = "DTCM"
++        _DEFAULT_DDR_SIZE_MBYTES = 2048
+ 
+         linker_script_suffix = ""
+         if itcm_size_kbytes != _DEFAULT_ITCM_SIZE_KBYTES or \
+            dtcm_size_kbytes != _DEFAULT_DTCM_SIZE_KBYTES or \
+            stack_size_bytes != _DEFAULT_STACK_SIZE_BYTES or \
+            heap_size != _DEFAULT_HEAP_SIZE or \
+-           heap_location != _DEFAULT_HEAP_LOCATION:
++           heap_location != _DEFAULT_HEAP_LOCATION or \
++           ddr_size_mbytes != _DEFAULT_DDR_SIZE_MBYTES:
+             linker_script_suffix = "_ITCM%dKB_DTCM%dKB_STACK%d_HEAP%s%s" % (
+                 itcm_size_kbytes,
+                 dtcm_size_kbytes,
+@@ -286,6 +290,8 @@ def coralnpu_v2_binary(
+                 heap_size,
+                 heap_location,
+             )
++            if ddr_size_mbytes != _DEFAULT_DDR_SIZE_MBYTES:
++                linker_script_suffix += "_DDR%dMB" % ddr_size_mbytes
+ 
+         linker_script_name = name + linker_script_suffix + "_linker_script"
+         linker_script_output_file = name + linker_script_suffix + ".ld"
+@@ -299,6 +305,7 @@ def coralnpu_v2_binary(
+             stack_size_bytes = stack_size_bytes,
+             heap_size = heap_size,
+             heap_location = heap_location,
++            ddr_size_mbytes = ddr_size_mbytes,
+         )
+         linker_script = ":" + linker_script_output_file
+ 
+diff --git a/rules/linker.bzl b/rules/linker.bzl
+index 6784cf6..2ccb0be 100644
+--- a/rules/linker.bzl
++++ b/rules/linker.bzl
+@@ -50,6 +50,7 @@ def _generate_linker_script_impl(ctx):
+         "@@ITCM_LENGTH@@": str(ctx.attr.itcm_size_kbytes),
+         "@@DTCM_LENGTH@@": str(ctx.attr.dtcm_size_kbytes),
+         "@@DTCM_ORIGIN@@": dtcm_origin,
++        "@@DDR_LENGTH@@": str(ctx.attr.ddr_size_mbytes),
+         "@@STACK_SIZE@@": str(stack_size),
+         "@@HEAP_LOCATION@@": heap_location,
+         "@@HEAP_SIZE_SPEC@@": heap_size_spec,
+@@ -69,6 +70,7 @@ generate_linker_script = rule(
+         "out": attr.output(mandatory = True),
+         "itcm_size_kbytes": attr.int(mandatory = True),
+         "dtcm_size_kbytes": attr.int(mandatory = True),
++        "ddr_size_mbytes": attr.int(default = 2048),
+         "stack_size_bytes": attr.int(default = 128),
+         "heap_size": attr.string(default = ""),
+         "heap_location": attr.string(default = "DTCM"),
+diff --git a/tests/systemc/Xbar.h b/tests/systemc/Xbar.h
+index 32c3cc9..49cbbec 100644
+--- a/tests/systemc/Xbar.h
++++ b/tests/systemc/Xbar.h
+@@ -15,34 +15,86 @@
+ #ifndef TESTS_SYSTEMC_XBAR_H_
+ #define TESTS_SYSTEMC_XBAR_H_
+ 
++#include <sys/mman.h>
++
+ #include <cstdint>
+ #include <cstdio>
++#include <cstring>
++#include <vector>
+ 
+ #include <systemc>
+ #include <tlm>
+ #include <tlm_utils/simple_target_socket.h>
+ 
+-// "Crossbar" containing a memory and a UART.
++// "Crossbar" containing a memory and a UART. With CORALNPU_DDR it also has 1 GiB of simulated DDR,
++// backed by lazily committed anonymous memory: bytes no access has touched read as zero.
+ class Xbar : sc_core::sc_module {
+  public:
+   Xbar(sc_core::sc_module_name name) : sc_core::sc_module(std::move(name)) {
+     memset(memory_, 0xa5, kMemorySizeBytes);
++#ifdef CORALNPU_DDR
++    void* ddr = mmap(nullptr, kDdrSizeBytes, PROT_READ | PROT_WRITE,
++                     MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, -1, 0);
++    if (ddr == MAP_FAILED) SC_REPORT_FATAL("Memory", "Cannot reserve the DDR backing\n");
++    ddr_ = static_cast<uint8_t*>(ddr);
++#endif
+     socket_.register_b_transport(this, &Xbar::b_transport);
+   }
+ 
++  ~Xbar() {
++#ifdef CORALNPU_DDR
++    munmap(ddr_, kDdrSizeBytes);
++#endif
++  }
++
+   tlm_utils::simple_target_socket<Xbar>& socket() { return socket_; }
+ 
++  // Whether [addr, addr + len) lies within one memory region.
+   static bool ContainsMemoryRange(uint64_t addr, size_t len) {
+-    return addr >= kMemoryAddr && len <= kMemorySizeBytes &&
+-           addr - kMemoryAddr <= kMemorySizeBytes - len;
++    return Contains(kMemoryAddr, kMemorySizeBytes, addr, len) || ContainsDdrRange(addr, len);
++  }
++
++  static bool ContainsDdrRange(uint64_t addr, size_t len) {
++#ifdef CORALNPU_DDR
++    return Contains(kDdrAddr, kDdrSizeBytes, addr, len);
++#else
++    (void)addr;
++    (void)len;
++    return false;
++#endif
++  }
++
++  // Makes a DDR range read as zero again; pages inside it are released rather than written.
++  void ZeroDdrRange(uint64_t addr, uint64_t len) {
++#ifdef CORALNPU_DDR
++    if (!ContainsDdrRange(addr, len)) return;
++    uint8_t* begin = ddr_ + (addr - kDdrAddr);
++    uint8_t* end = begin + len;
++    constexpr uintptr_t kPage = 4096;
++    uint8_t* first = reinterpret_cast<uint8_t*>((reinterpret_cast<uintptr_t>(begin) + kPage - 1) & ~(kPage - 1));
++    uint8_t* last = reinterpret_cast<uint8_t*>(reinterpret_cast<uintptr_t>(end) & ~(kPage - 1));
++    if (first >= last || madvise(first, last - first, MADV_DONTNEED) != 0) {
++      memset(begin, 0, len);
++      return;
++    }
++    memset(begin, 0, first - begin);
++    memset(last, 0, end - last);
++#else
++    (void)addr;
++    (void)len;
++#endif
+   }
+ 
+   void b_transport(tlm::tlm_generic_payload& trans, sc_core::sc_time& delay) {
+     sc_dt::uint64 addr = trans.get_address();
+     unsigned int len = trans.get_data_length();
+ 
+-    if (ContainsMemoryRange(addr, len)) {
+-      memory_b_transport_(trans, delay);
++    if (Contains(kMemoryAddr, kMemorySizeBytes, addr, len)) {
++      memory_b_transport_(trans, delay, memory_, kMemoryAddr, kMemorySizeBytes);
++#ifdef CORALNPU_DDR
++    } else if (ContainsDdrRange(addr, len)) {
++      memory_b_transport_(trans, delay, ddr_, kDdrAddr, kDdrSizeBytes);
++#endif
+     } else if (addr == kUartAddr) {
+       uart_b_transport_(trans, delay);
+     } else {
+@@ -52,8 +104,13 @@ class Xbar : sc_core::sc_module {
+   }
+ 
+  private:
+-  void memory_b_transport_(tlm::tlm_generic_payload& trans, sc_core::sc_time& delay) {
+-    sc_dt::uint64 addr = trans.get_address() & ~kMemoryAddr;
++  static bool Contains(uint64_t base, uint64_t size, uint64_t addr, uint64_t len) {
++    return addr >= base && len <= size && addr - base <= size - len;
++  }
++
++  void memory_b_transport_(tlm::tlm_generic_payload& trans, sc_core::sc_time& delay,
++                           uint8_t* memory, uint64_t base, uint64_t size) {
++    sc_dt::uint64 addr = trans.get_address() - base;
+     unsigned char* ptr = trans.get_data_ptr();
+     unsigned int len = trans.get_data_length();
+     unsigned int streaming_width = trans.get_streaming_width();
+@@ -69,30 +126,30 @@ class Xbar : sc_core::sc_module {
+           do_access = be[pos % be_len] == TLM_BYTE_ENABLED;
+         }
+         if (do_access) {
+-          if ((addr + (pos % streaming_width)) >= sc_dt::uint64(kMemorySizeBytes)) {
++          if ((addr + (pos % streaming_width)) >= sc_dt::uint64(size)) {
+             trans.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
+             SC_REPORT_FATAL("Memory", "Bad address\n");
+             return;
+           }
+ 
+           if (trans.is_read()) {
+-            ptr[pos] = memory_[addr + pos];
++            ptr[pos] = memory[addr + pos];
+           } else {
+-            memory_[addr + pos] = ptr[pos];
++            memory[addr + pos] = ptr[pos];
+           }
+         }
+       }
+     } else {
+-      if ((addr + len) > sc_dt::uint64(kMemorySizeBytes)) {
++      if ((addr + len) > sc_dt::uint64(size)) {
+         trans.set_response_status(tlm::TLM_ADDRESS_ERROR_RESPONSE);
+         SC_REPORT_FATAL("Memory", "Bad address\n");
+         return;
+       }
+ 
+       if (trans.is_read()) {
+-        memcpy(ptr, memory_ + addr, len);
++        memcpy(ptr, memory + addr, len);
+       } else if (trans.is_write()) {
+-        memcpy(memory_ + addr, ptr, len);
++        memcpy(memory + addr, ptr, len);
+       } else {
+         trans.set_response_status(tlm::TLM_GENERIC_ERROR_RESPONSE);
+         SC_REPORT_FATAL("Memory", "Bad command\n");
+@@ -150,6 +207,11 @@ class Xbar : sc_core::sc_module {
+   static constexpr uint32_t kMemoryAddr = 0x20000000;
+   static constexpr size_t kMemorySizeBytes = 0x400000;
+   static constexpr uint32_t kUartAddr = 0x54000000;
++#ifdef CORALNPU_DDR
++  static constexpr uint64_t kDdrAddr = 0x80000000;
++  static constexpr uint64_t kDdrSizeBytes = 0x40000000;
++  uint8_t* ddr_ = nullptr;
++#endif
+   uint8_t memory_[kMemorySizeBytes];
+   std::vector<char> uart_buffer_;
+   tlm_utils::simple_target_socket<Xbar> socket_;
+diff --git a/tests/verilator_sim/BUILD b/tests/verilator_sim/BUILD
+index 0ab3a8d..35d1b4f 100644
+--- a/tests/verilator_sim/BUILD
++++ b/tests/verilator_sim/BUILD
+@@ -353,3 +353,31 @@ cc_test(
+         ("rvv_core_mini_itcm512kb_dtcm512kb_axi", "RvvCoreMini_ITCM512KB_DTCM512KBAxi", True),
+     ]
+ ]
++
++# The standalone simulators with 1 GiB of simulated DDR at 0x80000000 (CORALNPU_DDR), on the same
++# models as the simulators above, with and without trace code.
++[
++    (
++        cc_library(
++            name = name + "_ddr" + suffix + "_tb",
++            srcs = ["@coralnpu_hw//hdl/chisel/src/coralnpu:V{}_parameters.h".format(top)] +
++                   CORE_MINI_AXI_TB_CC_LIBRARY_COMMON_SRCS,
++            hdrs = ["coralnpu/core_mini_axi_tb.h"],
++            defines = ["VERILATOR_MODEL=V" + top, "CORALNPU_DDR"] + (["HIGHMEM_RTL"] if highmem else []) +
++                      (["SYSC_TB_NO_TRACE"] if suffix else []),
++            deps = ["//hdl/chisel/src/coralnpu:{}_cc_library{}".format(name, suffix)] +
++                   CORE_MINI_AXI_TB_CC_LIBRARY_COMMON_DEPS,
++        ),
++        cc_binary(
++            name = name + "_ddr" + suffix + "_sim",
++            srcs = ["coralnpu/core_mini_axi_sim.cc"],
++            visibility = ["//visibility:public"],
++            deps = [":{}_ddr{}_tb".format(name, suffix)] + CORE_MINI_AXI_SIM_CC_BINARY_COMMON_DEPS,
++        ),
++    )
++    for name, top, highmem in [
++        ("rvv_core_mini_highmem_axi", "RvvCoreMiniHighmemAxi", True),
++        ("vme_core_mini_axi", "VmeCoreMiniAxi", False),
++    ]
++    for suffix in ["", "_fast"]
++]
+diff --git a/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc b/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
+index 63242ca..74401f3 100644
+--- a/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
++++ b/tests/verilator_sim/coralnpu/core_mini_axi_tb.cc
+@@ -392,6 +392,22 @@ absl::Status CoreMiniAxi_tb::LoadElfAsync(const std::string& file_name) {
+       munmap(file_data, file_size);
+       return absl::InvalidArgumentError("Invalid ELF or segment outside host-loadable RAM");
+     }
++    // The loader copies only file bytes. DDR is not initialized by the guest startup code, so the
++    // zero-filled tail of each DDR segment is made explicit.
++    auto zero_ddr_tails = [&](auto* header, auto* phdr) {
++      for (unsigned i = 0; i < header->e_phnum; ++i) {
++        auto* segment = reinterpret_cast<decltype(phdr)>(data8 + header->e_phoff) + i;
++        if (segment->p_type != PT_LOAD || segment->p_memsz == segment->p_filesz) continue;
++        const uint64_t tail = static_cast<uint64_t>(segment->p_paddr) + segment->p_filesz;
++        const uint64_t tail_len = segment->p_memsz - segment->p_filesz;
++        if (Xbar::ContainsDdrRange(tail, tail_len)) xbar_.ZeroDdrRange(tail, tail_len);
++      }
++    };
++    if (data8[EI_CLASS] == ELFCLASS32) {
++      zero_ddr_tails(static_cast<Elf32_Ehdr*>(file_data), static_cast<Elf32_Phdr*>(nullptr));
++    } else {
++      zero_ddr_tails(static_cast<Elf64_Ehdr*>(file_data), static_cast<Elf64_Phdr*>(nullptr));
++    }
+     std::vector<DataTransfer> elf_transfers;
+     absl::Status load_status = absl::OkStatus();
+     uint64_t entry_point = ::LoadElf(data8, [this, &elf_transfers, &load_status](void *dest, const void *src,
+diff --git a/toolchain/coralnpu_tcm.ld.tpl b/toolchain/coralnpu_tcm.ld.tpl
+index 7c1ce79..db42f3e 100644
+--- a/toolchain/coralnpu_tcm.ld.tpl
++++ b/toolchain/coralnpu_tcm.ld.tpl
+@@ -6,7 +6,7 @@ MEMORY {
+     ITCM(rx): ORIGIN = 0x00000000, LENGTH = @@ITCM_LENGTH@@K
+     DTCM(rw): ORIGIN = @@DTCM_ORIGIN@@, LENGTH = @@DTCM_LENGTH@@K
+     EXTMEM(rw): ORIGIN = 0x20000000, LENGTH = 4096K
+-    DDR(rw): ORIGIN = 0x80000000, LENGTH = 2048M
++    DDR(rw): ORIGIN = 0x80000000, LENGTH = @@DDR_LENGTH@@M
+ }
+ 
+ STACK_SIZE = DEFINED(__stack_size__) ? __stack_size__ : @@STACK_SIZE@@;

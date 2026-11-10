@@ -1,7 +1,8 @@
 #include <stdint.h>
 #include <unistd.h>
 
-extern "C" long htif_syscall_6args(long, long, long, long, long, long, long);
+extern "C" long htif_syscall_6args(uint64_t, uint64_t, uint64_t, uint64_t,
+                                   uint64_t, uint64_t, uint64_t);
 extern "C" volatile uint64_t tohost, tohost_ready;
 
 extern "C" __attribute__((noreturn)) void host_exit(uint32_t status) {

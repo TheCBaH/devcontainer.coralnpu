@@ -6,7 +6,7 @@
 #   <group>    a smoke.sh group of the emulators archive in the Ubuntu image
 set -uo pipefail
 root=$(cd -- "$(dirname -- "$0")/.." && pwd)
-tests=(libc subsystem rtl kernels-tcm kernels-highmem uninit matrix-fp32 matrix-int8 matrix-bf16 matrix-vme invalid host limits)
+tests=(libc subsystem rtl kernels-tcm kernels-highmem uninit matrix-fp32 matrix-int8 matrix-bf16 matrix-vme invalid host limits ddr-rtl ddr-mpact ddr-host)
 emulators=coralnpu-emulators
 run() { bash "$root/scripts/test-archives.sh" "$@"; }
 one() {
