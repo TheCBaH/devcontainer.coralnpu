@@ -12,7 +12,7 @@ architecture (`x86_64`, `aarch64`) and `SHA256SUMS`:
 
 | Archive | Contents |
 | --- | --- |
-| `coralnpu-emulators-linux-<arch>.tar.gz` | MPACT V2/M3/M4 and seven standalone Verilator RTL simulators, each also as a `_fast` build |
+| `coralnpu-emulators-linux-<arch>.tar.gz` | MPACT V2/M3/M4 and nine standalone Verilator RTL simulators, each also as a `_fast` build |
 | `coralnpu-subsystem-linux-<arch>.tar.gz` | Optional full-subsystem `chip_verilator` simulators and loader |
 
 ```sh
@@ -67,6 +67,8 @@ alongside the base ID. Each CI run also publishes
 | `core_mini_axi_sim`, `rvv_core_mini_axi_sim`, `vme_core_mini_axi_sim` | 8 KiB / 32 KiB at `0x10000` | Core CSR `0x30000` |
 | `core_mini_itcm512kb_dtcm512kb_axi_sim`, `rvv_core_mini_itcm512kb_dtcm512kb_axi_sim` | 512 KiB / 512 KiB at `0x100000` | Core CSR `0x200000` |
 | `core_mini_highmem_axi_sim`, `rvv_core_mini_highmem_axi_sim` | 1 MiB / 1 MiB at `0x100000` | Core CSR `0x200000` |
+| `rvv_core_mini_highmem_axi_ddr_sim` | 1 MiB / 1 MiB at `0x100000` | As the highmem RVV simulator, plus 1 GiB of DDR |
+| `vme_core_mini_axi_ddr_sim` | 8 KiB / 32 KiB at `0x10000` | As the VME simulator, plus 1 GiB of DDR |
 
 The self-checking `rvv_matmul_{fp32,int8,bf16}.elf` examples use the highmem
 RVV binary and external weights/output at `0x20000000`.
@@ -75,13 +77,49 @@ tile transfers and FP32 accumulation. See `examples/README.md` in the archive
 (or [fixtures/README.md](fixtures/README.md)) for layouts and launch commands.
 
 All standalone RTL simulators share the 4 MiB SystemC testbench RAM at
-`0x20000000`; larger TCMs do not enlarge it and there is no DMA. RVV variants
+`0x20000000`; larger TCMs do not enlarge it and there is no DMA. The `_ddr`
+simulators (and their `_ddr_fast` twins) add **1 GiB of simulated DDR at
+`0x80000000`** behind the core's AXI master; see below. RVV variants
 use VLEN=128. The larger-TCM targets use the mini retirement buffer;
 wrapper patch 0011 exposes their debug ports, so `--instr_trace` is available.
 Mini-buffer traces report zero instruction and result fields. `linker/` holds
 the generated linker layouts for 8/32 KiB,
 512/512 KiB and 1/1 MiB, matching the examples; upstream's template is
 `provenance/coralnpu_tcm.ld.tpl`.
+
+## Simulated DDR
+
+`rvv_core_mini_highmem_axi_ddr_sim` and `vme_core_mini_axi_ddr_sim` are the
+existing highmem RVV and VME simulators (same RTL) with 1 GiB of DDR at
+`0x80000000`, addresses `0x80000000`-`0xbfffffff`. The 4 MiB RAM at `0x20000000`
+is still there and separate. The existing simulators keep their memory maps.
+
+- The DDR is anonymous host memory, committed when touched; bytes no access
+  has touched read as zero. ELF `PT_LOAD` segments, their zero-filled tails,
+  guest loads and stores and HTIF buffers and file names (also valid in DDR)
+  all reach the same array. A transfer must lie inside one region: crossing
+  the end, starting outside it and wrapping around the address space are refused
+  (guest: load/store access fault; host: load error 126 or HTIF `-1`).
+- Code runs from ITCM; fetching from DDR is not supported. Use
+  `.ddr_data` and `.ddr_bss` for bulk data with the linker layouts
+  `linker/itcm8k_dtcm32k_ddr1g.ld` and `linker/itcm1m_dtcm1m_ddr1g.ld`,
+  whose DDR region is 1024M; upstream's template declares 2048M.
+- The array is untimed: no row, bank, refresh or controller latency. Cycle
+  counts include the AXI handshake only and do not predict hardware.
+- `launchers/coralnpu_{v2,m3,m4}_ddr_sim` start the MPACT simulators with the
+  default regions plus the same DDR (`--allow_memory_region` is fixed, and
+  an ELF with a segment outside the ITCM/DTCM range, the RAM or DDR is
+  refused with 126 before the simulator starts). MPACT counts instructions,
+  not cycles.
+- The manifest has `*-ddr` configurations with a `ddr` region of 1 GiB;
+  the chip-level subsystem's DDR aperture is still unimplemented.
+
+`bash ddr-tests.sh rtl|mpact|host` (smoke groups `ddr-rtl`, `ddr-mpact`,
+`ddr-host`) runs the self-checking `ddr_*.elf` examples and
+`rvv_matmul_ddr_int8.elf`, a product with a 4.5 MiB right-hand matrix.
+They check data above the legacy 4 MiB, the last bytes of DDR, byte-exact DDR
+to DTCM to DDR copies, equal offsets of the RAM and of DDR, HTIF buffers in
+DDR and the failures above.
 
 Each standalone RTL simulator `<name>_sim` also ships as `<name>_fast_sim`:
 the same hardware configuration (it shares the manifest record and ID),

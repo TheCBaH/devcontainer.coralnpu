@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 import subprocess
 
-from build import ROOT, SOURCE
+from build import DDR_BASE, DDR_BYTES, DDR_SIMULATORS, ROOT, SOURCE
 from zvt_export import ZVT_VERSION
 
 CORAL_REPOSITORY = "https://github.com/google-coral/coralnpu"
@@ -33,6 +33,10 @@ STANDALONE = {
         "core-mini-highmem-axi", "scalar", "core_mini_highmem_axi_cc_library", "CoreMiniHighmemAxi"),
     "rvv_core_mini_highmem_axi_sim": (
         "rvv-core-mini-highmem-axi", "rvv", "rvv_core_mini_highmem_axi_cc_library", "RvvCoreMiniHighmemAxi"),
+    "rvv_core_mini_highmem_axi_ddr_sim": (
+        "rvv-core-mini-highmem-axi-ddr", "rvv", "rvv_core_mini_highmem_axi_cc_library", "RvvCoreMiniHighmemAxi"),
+    "vme_core_mini_axi_ddr_sim": (
+        "vme-core-mini-axi-ddr", "vme", "vme_core_mini_axi_cc_library", "VmeCoreMiniAxi"),
     "core_mini_itcm512kb_dtcm512kb_axi_sim": (
         "core-mini-itcm512kb-dtcm512kb-axi", "scalar", "core_mini_itcm512kb_dtcm512kb_axi_cc_library",
         "CoreMini_ITCM512KB_DTCM512KBAxi"),
@@ -45,6 +49,20 @@ MPACT = {
     "coralnpu_m3_sim": ("mpact-m3", "m3"),
     "coralnpu_m4_sim": ("mpact-m4", "m4"),
 }
+# Launchers of the MPACT simulators with the simulated DDR (scripts/mpact-ddr.sh), by the executable they start.
+MPACT_DDR_REGIONS = ["0x0:0x2000:rx", "0x10000:0x8000:rw", "0x20000000:0x400000:rw",
+                     "0x%x:0x%x:rw" % (DDR_BASE, DDR_BYTES)]
+DDR_TIMING = ("untimed host memory behind the RTL AXI handshake: no DRAM row, bank, refresh or controller "
+              "latency, so cycles spent in DDR do not predict hardware")
+
+
+def mpact_ddr_launcher(executable):
+    return "launchers/" + executable.replace("_sim", "_ddr_sim")
+
+
+def ddr_region(backing, interface, timing, notes):
+    return region("ddr", "ddr", DDR_BASE, DDR_BYTES, backing, interface, access(True, True, False, True, False),
+                  timing, notes=notes)
 # fpga/BUILD _ALL_CONFIGS: core kind, TCM KiB, configured clock in MHz.
 SUBSYSTEMS = {
     "chip_verilator_vector_normal": ("subsystem-vector-normal", "rvv", 8, 32, 50),
@@ -219,6 +237,9 @@ def check_tcm(parameters, itcm, dtcm, name):
 def standalone(executable, elaboration, header, revision):
     name, kind, library, module = STANDALONE[executable]
     parameters, build_parameters = rtl_build_parameters(elaboration, header)
+    ddr = executable in DDR_SIMULATORS
+    if ddr:
+        build_parameters["defines"] = build_parameters["defines"] + ["CORALNPU_DDR"]
     itcm, dtcm = parameters["itcmSizeKBytes"] * KIB, parameters["dtcmSizeKBytes"] * KIB
     dtcm_base, csr_base = tcm_layout(itcm, dtcm)
     trace = parameters.get("exposeDebugPorts", False)
@@ -227,7 +248,8 @@ def standalone(executable, elaboration, header, revision):
         "id": "",
         "name": name,
         "description": "Standalone " + module + " RTL core with the SystemC testbench, "
-                       + str(itcm // KIB) + " KiB ITCM, " + str(dtcm // KIB) + " KiB DTCM and 4 MiB testbench RAM",
+                       + str(itcm // KIB) + " KiB ITCM, " + str(dtcm // KIB) + " KiB DTCM, 4 MiB testbench RAM"
+                       + (" and 1 GiB simulated DDR" if ddr else ""),
         "provenance": provenance("//tests/verilator_sim:" + executable, build_parameters, revision),
         "simulation": {
             "backend": "verilator",
@@ -239,7 +261,9 @@ def standalone(executable, elaboration, header, revision):
             "boot": {
                 "loader": "ELF PT_LOAD TCM segments written through the core AXI slave, read back and compared; "
                           "--backdoor_load writes TCM segments directly into the SRAM models; testbench RAM "
-                          "segments are loaded directly into the SystemC memory model",
+                          "segments are loaded directly into the SystemC memory model"
+                          + ("; DDR segments take the same path, and the zero-filled tail of each DDR segment is "
+                             "cleared explicitly" if ddr else ""),
                 "entry": "ELF e_entry written to core CSR base + 4, then clock gate and reset released through "
                          "core CSR base",
                 "steps": [executable + " --binary=<elf> [--cycles=N]"],
@@ -278,6 +302,10 @@ def standalone(executable, elaboration, header, revision):
                    "core AXI master to SystemC Xbar", access(True, True, None, True, False),
                    "untimed SystemC TLM array behind the RTL AXI handshake",
                    notes="Host ELF loading and HTIF buffers can access the full range through the SystemC memory model"),
+            *([ddr_region("host-mmap", "core AXI master to SystemC Xbar", DDR_TIMING,
+                          "Anonymous lazily committed host memory; bytes no access has touched read as zero. "
+                          "Host ELF loading and HTIF buffers reach it through the SystemC memory model. "
+                          "Instruction fetch from DDR is not supported")] if ddr else []),
             region("testbench-uart", "mmio", 0x54000000, 4, "register-file", "core AXI master to SystemC Xbar",
                    access(False, True, False, False, False), "untimed",
                    notes="Bytes written are printed to stdout at each newline"),
@@ -294,7 +322,7 @@ def standalone(executable, elaboration, header, revision):
             "external_instruction_fetch": None,
             "buses": core_buses(parameters),
             "memory_timing_model": "TCMs are cycle-based RTL SRAM; the testbench RAM is an untimed SystemC array; "
-                                   "no cache or DRAM timing",
+                                   "no cache or DRAM timing" + ("; " + DDR_TIMING if ddr else ""),
             "waveform_tracing": "fst",
             "instruction_trace": True if trace else False,
             "guest_output": "HTIF write/exit through the tohost and fromhost ELF symbols",
@@ -302,7 +330,8 @@ def standalone(executable, elaboration, header, revision):
         "limitations": [
             "Smoke fixtures do not establish complete ISA, rounding/NaN or RTL conformance",
             "Instruction fetch from DTCM and testbench RAM is not verified",
-        ],
+        ] + (["DDR is a functional capacity model with no DRAM timing; instruction fetch from DDR is not supported"]
+             if ddr else []),
     }
     check_tcm(parameters, itcm, dtcm, name)
     return record
@@ -315,14 +344,17 @@ MPACT_ISA = {
 }
 
 
-def mpact(executable, revision):
+def mpact(executable, revision, ddr=False):
     name, generation = MPACT[executable]
+    if ddr:
+        name += "-ddr"
     extensions, vector_fp, bf16, matrix = MPACT_ISA[generation]
     flat = "functional, untimed"
     record = {
         "id": "",
         "name": name,
-        "description": "MPACT functional " + generation.upper() + " instruction-set simulator",
+        "description": "MPACT functional " + generation.upper() + " instruction-set simulator"
+                       + (" with 1 GiB of simulated DDR, started through its launcher" if ddr else ""),
         "provenance": provenance("@coralnpu_mpact//sim:" + executable, {
             "elaboration_target": None,
             "module": None,
@@ -332,7 +364,10 @@ def mpact(executable, revision):
             "enable_verification": None,
             "rob_mode": "not-applicable",
             "expose_debug_ports": None,
-            "generated_parameters": {"vector_byte_length": 16, "initial_misa_value": 0x40201120},
+            "generated_parameters": {"vector_byte_length": 16, "initial_misa_value": 0x40201120,
+                                     **({"launcher": "scripts/mpact-ddr.sh",
+                                         "launcher_sha256": sha256(ROOT / "scripts/mpact-ddr.sh"),
+                                         "allow_memory_region": MPACT_DDR_REGIONS} if ddr else {})},
         }, revision),
         "simulation": {
             "backend": "mpact",
@@ -342,17 +377,22 @@ def mpact(executable, revision):
             "clock": {"configured_frequency_mhz": None, "note": "Cycle counts are instruction counts, not timing"},
             "boot": {"loader": "MPACT ELF loader writes PT_LOAD segments directly into functional memory",
                      "entry": "ELF e_entry unless --entry_point is given",
-                     "steps": [executable + " --semihost_htif --exit_on_ebreak --max_instructions=100000000 <elf>"]},
+                     "steps": [(mpact_ddr_launcher(executable) if ddr else executable)
+                               + " --semihost_htif --exit_on_ebreak --max_instructions=100000000 <elf>"]},
             "termination": "Returns the low 8 bits of the guest HTIF exit code, 0 for mpause, 125 for "
                            "ebreak with --exit_on_ebreak or another abnormal halt, and 126 for a load/simulator "
                            "error. Batch instruction-budget exhaustion returns 124; batch SIGINT returns 130. "
                            "Guest exits may use the same numeric codes; traps may continue executing. "
                            "Instruction budgets do not bound blocked host I/O or wall-clock time.",
             "runtime_overrides": [
-                {"flag": "--allow_memory_region", "default": ["0x0:0x2000:rx", "0x10000:0x8000:rw",
-                                                              "0x20000000:0x400000:rw"],
+                {"flag": "--allow_memory_region",
+                 "default": MPACT_DDR_REGIONS if ddr else ["0x0:0x2000:rx", "0x10000:0x8000:rw",
+                                                          "0x20000000:0x400000:rw"],
                  "changes_configuration": True,
-                 "description": "Replaces the default guest-accessible regions; record the values with the base ID"},
+                 "description": ("Fixed by the launcher, which rejects it; the launcher also rejects ELF segments "
+                                 "outside the ITCM/DTCM range up to 2 MiB, the 4 MiB RAM and DDR"
+                                 if ddr else
+                                 "Replaces the default guest-accessible regions; record the values with the base ID")},
                 {"flag": "--semihost_htif", "default": False, "changes_configuration": True,
                  "description": "Enables HTIF and adds every ELF PT_LOAD segment as an extra region with the "
                                 "segment's permissions; record the ELF hash with the base ID"},
@@ -386,6 +426,9 @@ def mpact(executable, revision):
                    access(True, True, False, True, False), flat),
             region("extmem", "ram", 0x20000000, 4 * MIB, "mpact-flat", "functional memory region (rw)",
                    access(True, True, False, True, False), flat),
+            *([ddr_region("mpact-flat", "functional memory region (rw)", flat,
+                          "Demand-allocated functional memory; untouched bytes read as zero. Instruction fetch "
+                          "from DDR is not supported")] if ddr else []),
         ],
         "capabilities": {
             "dma": {"present": False, "type": None, "mmio_base_address": None, "reachable_regions": []},
@@ -401,7 +444,9 @@ def mpact(executable, revision):
         "limitations": [
             "V2 includes integer vectors, so it is not an ISA-exact model of the scalar-only CoreMini",
             "Generation is fixed by the executable; --initial_misa_value does not switch V2 to M3/M4",
-        ],
+        ] + (["The DDR tests do not cover MPACT's range checks of HTIF buffers; only the launcher's ELF check "
+              "bounds the segments",
+              "Needs bash and od for the launcher's preflight"] if ddr else []),
     }
     return record
 

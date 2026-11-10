@@ -18,15 +18,22 @@ RVV_MATMUL_TESTS = ("rvv_matmul_fp32", "rvv_matmul_int8", "rvv_matmul_bf16")
 # Self-checking harnesses for Coral's Gemma kernels (fixtures/kernel_check.cc).
 KERNEL_TESTS = tuple("kernel_%s_%s" % (kernel, dtype) for kernel in ("residual_add", "rms_norm", "tanh_gelu_mul")
                      for dtype in ("f32", "bf16"))
+# The simulated DDR (fixtures/BUILD.bazel, patches/0036-simulated-ddr.patch, scripts/manifest.py).
+DDR_BASE = 0x80000000
+DDR_BYTES = 1 << 30
+DDR_SCALAR_FIXTURES = ("ddr_payload", "ddr_payload_tcm1m", "ddr_htif", "ddr_htif_tcm1m")
+DDR_FIXTURES = (*DDR_SCALAR_FIXTURES, "ddr_rvv_tcm1m", "rvv_matmul_ddr_int8")
 FIXTURES = ("batch_limits", "x0_load", "x0_load_tcm512k", "scalar", "rvv", "rvv_fp", "matrix", "memory", "memory_tcm512k", "memory_tcm1m",
             "scalar_tcm512k", "rvv_tcm512k", "rvv_fp_tcm512k", "subsystem_dma",
             "subsystem_dma_tcm1m", "trap_address", "trap_address_tcm512k", "exit_status", "exit_status_tcm512k", "uninit_tcm", "uninit_tcm_tcm512k", "host_ram", "host_ram_tcm512k", "host_io", "host_io_tcm512k", "external_payload",
-            "vme_external_matmul", *VME_TESTS, *RVV_MATMUL_TESTS, *KERNEL_TESTS)
+            "vme_external_matmul", *DDR_FIXTURES, *VME_TESTS, *RVV_MATMUL_TESTS, *KERNEL_TESTS)
 # Linker layouts shipped with the archives, taken from these fixtures.
 LINKER_LAYOUTS = {
     "itcm8k_dtcm32k.ld": "memory_ITCM8KB_DTCM32KB_STACK2048_HEAPDTCM.ld",
     "itcm512k_dtcm512k.ld": "memory_tcm512k_ITCM512KB_DTCM512KB_STACK2048_HEAPDTCM.ld",
     "itcm1m_dtcm1m.ld": "memory_tcm1m_ITCM1024KB_DTCM1024KB_STACK2048_HEAPDTCM.ld",
+    "itcm8k_dtcm32k_ddr1g.ld": "ddr_payload_ITCM8KB_DTCM32KB_STACK2048_HEAPDTCM_DDR1024MB.ld",
+    "itcm1m_dtcm1m_ddr1g.ld": "ddr_payload_tcm1m_ITCM1024KB_DTCM1024KB_STACK2048_HEAPDTCM_DDR1024MB.ld",
 }
 CORE = "//hdl/chisel/src/coralnpu:"
 # Executable: (Bazel target, elaborated Chisel library, module).
@@ -44,6 +51,10 @@ EMULATORS = {
                                   "core_mini_highmem_axi_cc_library", "CoreMiniHighmemAxi"),
     "rvv_core_mini_highmem_axi_sim": ("//tests/verilator_sim:rvv_core_mini_highmem_axi_sim",
                                       "rvv_core_mini_highmem_axi_cc_library", "RvvCoreMiniHighmemAxi"),
+    "rvv_core_mini_highmem_axi_ddr_sim": ("//tests/verilator_sim:rvv_core_mini_highmem_axi_ddr_sim",
+                                          "rvv_core_mini_highmem_axi_cc_library", "RvvCoreMiniHighmemAxi"),
+    "vme_core_mini_axi_ddr_sim": ("//tests/verilator_sim:vme_core_mini_axi_ddr_sim",
+                                  "vme_core_mini_axi_cc_library", "VmeCoreMiniAxi"),
     "core_mini_itcm512kb_dtcm512kb_axi_sim": ("//tests/verilator_sim:core_mini_itcm512kb_dtcm512kb_axi_sim",
                                               "core_mini_itcm512kb_dtcm512kb_axi_cc_library",
                                               "CoreMini_ITCM512KB_DTCM512KBAxi"),
@@ -51,6 +62,9 @@ EMULATORS = {
                                                   "rvv_core_mini_itcm512kb_dtcm512kb_axi_cc_library",
                                                   "RvvCoreMini_ITCM512KB_DTCM512KBAxi"),
 }
+# The DDR simulators are these hardware configurations with the simulated DDR behind the core's AXI master.
+DDR_SIMULATORS = {"rvv_core_mini_highmem_axi_ddr_sim": "rvv_core_mini_highmem_axi_sim",
+                  "vme_core_mini_axi_ddr_sim": "vme_core_mini_axi_sim"}
 # The VCD simulators are the same hardware configuration as these, traced in another format.
 VCD_SIMULATORS = {"core_mini_axi_vcd_sim": "core_mini_axi_sim"}
 # The _fast simulators are these hardware configurations without trace code or assertions.
@@ -199,6 +213,30 @@ def validate_matrix_fixture(path, payload_bytes, itcm_size=0x100000, dtcm_base=0
     print(path.name, "fits prebuilt layout; initialized external bytes=", initialized, flush=True)
 
 
+def validate_ddr_fixture(path, itcm_size, dtcm_base, dtcm_size, payload_bytes=None, zero_tail=0):
+    elf = path.read_bytes()
+    if elf[:7] != b"\x7fELF\x01\x01\x01":
+        raise RuntimeError("DDR fixture must be ELF32 little-endian: " + str(path))
+    phoff, = struct.unpack_from("<I", elf, 28)
+    phsize, phnum = struct.unpack_from("<HH", elf, 42)
+    regions = [(0, itcm_size), (dtcm_base, dtcm_base + dtcm_size), (DDR_BASE, DDR_BASE + DDR_BYTES)]
+    initialized = tail = 0
+    for i in range(phnum):
+        kind, _, vaddr, addr, filesz, memsz, _, _ = struct.unpack_from("<8I", elf, phoff + i * phsize)
+        if kind != 1:
+            continue
+        if vaddr != addr or filesz > memsz or not any(lo <= addr and addr + memsz <= hi for lo, hi in regions):
+            raise RuntimeError("DDR fixture exceeds the selected layout: " + str(path))
+        if addr >= DDR_BASE:
+            initialized += filesz
+            tail += memsz - filesz
+    if payload_bytes is not None and initialized < payload_bytes:
+        raise RuntimeError("Initialized DDR bytes %d, expected %d: %s" % (initialized, payload_bytes, path))
+    if tail < zero_tail:
+        raise RuntimeError("Zero-filled DDR bytes %d, expected %d: %s" % (tail, zero_tail, path))
+    print(path.name, "fits prebuilt layout; initialized DDR bytes=", initialized, "zero-filled=", tail, flush=True)
+
+
 def main():
     command = sys.argv[1]
     if command == "prepare":
@@ -214,14 +252,25 @@ def main():
         for name, payload_bytes in zip(RVV_MATMUL_TESTS, (2621440, 327680, 1310720)):
             validate_matrix_fixture(ROOT / "fixtures" / (name + ".elf"), payload_bytes)
         validate_matrix_fixture(ROOT / "fixtures/vme_external_matmul.elf", 4464, 8192, 0x10000, 32768)
+        for name in ("ddr_payload", "ddr_htif"):
+            validate_ddr_fixture(ROOT / "fixtures" / (name + ".elf"), 8192, 0x10000, 32768,
+                                 4718592 if name == "ddr_payload" else None, 6 * 1024 * 1024 if name == "ddr_payload" else 0)
+        for name in ("ddr_payload_tcm1m", "ddr_htif_tcm1m", "ddr_rvv_tcm1m", "rvv_matmul_ddr_int8"):
+            validate_ddr_fixture(ROOT / "fixtures" / (name + ".elf"), 0x100000, 0x100000, 0x100000,
+                                 4718592 if name != "ddr_htif_tcm1m" else None,
+                                 6 * 1024 * 1024 if name.startswith("ddr_payload") or name == "ddr_rvv_tcm1m" else 0)
         for layout, script in LINKER_LAYOUTS.items():
             label = "//portable_fixtures:" + script
             bazel("build", "-c", "opt", label)
             copy_output(output(label), ROOT / "fixtures" / layout)
+            if "ddr" in layout:
+                expected = "DDR(rw): ORIGIN = 0x%08x, LENGTH = %dM" % (DDR_BASE, DDR_BYTES >> 20)
+                if expected not in (ROOT / "fixtures" / layout).read_text():
+                    raise RuntimeError(layout + " does not declare " + expected)
         output_base = Path(run("bazel", "--output_user_root=" + str(ROOT / ".cache/bazel"),
                                "info", "output_base"))
         objdump, = (output_base / "external").glob("*toolchain_coralnpu_v2/bin/riscv64-unknown-elf-objdump")
-        for name in ("x0_load", "x0_load_tcm512k", "scalar", "scalar_tcm512k", "memory", "memory_tcm512k", "memory_tcm1m", "external_payload"):
+        for name in ("x0_load", "x0_load_tcm512k", "scalar", "scalar_tcm512k", "memory", "memory_tcm512k", "memory_tcm1m", "external_payload", *DDR_SCALAR_FIXTURES):
             disassembly = run(str(objdump), "-d", str(ROOT / "fixtures" / (name + ".elf")))
             vector = re.search(r"^\s*[0-9a-f]+:\s+[0-9a-f]+\s+(v\S+)", disassembly, re.MULTILINE)
             if vector:

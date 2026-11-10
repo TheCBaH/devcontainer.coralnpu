@@ -248,8 +248,8 @@
         "usable": {"type": "boolean"},
         "counts_toward_capacity": {"type": "boolean"},
         "backing_model": {
-          "description": "rtl-sram: RTL memory array. systemc-array: untimed SystemC byte array. host-vector: untimed host C++ buffer. mpact-flat: MPACT functional memory. register-file: MMIO registers. none: no backing store.",
-          "enum": ["rtl-sram", "rtl-rom", "systemc-array", "host-vector", "mpact-flat", "register-file", "none"]
+          "description": "rtl-sram: RTL memory array. systemc-array: untimed SystemC byte array. host-vector: untimed host C++ buffer. host-mmap: untimed host memory, lazily committed and zero-filled. mpact-flat: MPACT functional memory. register-file: MMIO registers. none: no backing store.",
+          "enum": ["rtl-sram", "rtl-rom", "systemc-array", "host-vector", "host-mmap", "mpact-flat", "register-file", "none"]
         },
         "interface": {"type": "string"},
         "timing": {"type": "string"},
