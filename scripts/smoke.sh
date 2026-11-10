@@ -5,7 +5,7 @@ root=$(cd -- "$(dirname -- "$0")" && pwd)
 unset LD_LIBRARY_PATH PYTHONPATH RUNFILES_DIR RUNFILES_MANIFEST_FILE
 # CORAL_SMOKE_GROUPS selects parts of the run; CI runs the groups in parallel. libc is a quick check
 # that every simulator starts and runs scalar.elf, for libc compatibility.
-all_groups="libc rtl kernels-tcm kernels-highmem uninit matrix-fp32 matrix-int8 matrix-bf16 matrix-vme invalid host limits"
+all_groups="libc rtl kernels-tcm kernels-highmem uninit matrix-fp32 matrix-int8 matrix-bf16 matrix-vme invalid host limits ddr-rtl ddr-mpact ddr-host"
 groups=${CORAL_SMOKE_GROUPS:-$all_groups}
 group() { [[ " $groups " == *" $1 "* ]]; }
 scratch=$(mktemp -d)
@@ -210,4 +210,7 @@ fi
 if group limits; then
   bash "$root/mpact-limits.sh"
 fi
+for kind in rtl mpact host; do
+  if group ddr-$kind; then bash "$root/ddr-tests.sh" $kind; fi
+done
 echo "External scalar, RVV, vector FP, matrix, memory and invalid-input checks passed"

@@ -46,6 +46,13 @@ def validate_configuration(record):
             check(not overlaps(region, other), region["name"] + " overlaps " + other["name"] + " in " + name)
         if region["type"] == "itcm":
             check(region["access"]["guest_store"] is False, "ITCM guest stores must be forbidden in " + name)
+        if region["type"] == "ddr" and region["usable"]:
+            check(region["implemented"] and region["backing_model"] != "none",
+                  "usable DDR " + region["name"] + " has no backing in " + name)
+            check(region["access"]["guest_load"] is True and region["access"]["guest_store"] is True,
+                  "usable DDR " + region["name"] + " is not readable and writable in " + name)
+            check(region["access"]["instruction_fetch"] is not True,
+                  "DDR instruction fetch is not tested for " + name)
         if region["type"] == "rom":
             check(region["access"]["guest_store"] is False, "ROM must be read-only in " + name)
     capabilities = record["capabilities"]
@@ -109,6 +116,7 @@ def validate(root):
             check((root / runtime).exists(), "missing runtime file " + runtime)
     shipped = {str(path.relative_to(root)) for path in root.glob("bin/*")}
     shipped |= {str(path.relative_to(root)) for path in root.glob("lib/libcoralnpu_simulator*.so")}
+    shipped |= {str(path.relative_to(root)) for path in root.glob("launchers/*")}
     check(shipped == paths, "artifacts do not cover the shipped simulators: " + str(sorted(shipped ^ paths)))
     check({artifact["configuration_id"] for artifact in document["artifacts"]} == set(ids),
           "configuration without an artifact")

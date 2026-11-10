@@ -35,6 +35,9 @@ jobs:
       - name: Test host, uninit, invalid, limits
         if: ${{ !cancelled() }}
         run: scripts/test-ci.sh host uninit invalid limits
+      - name: Test ddr
+        if: ${{ !cancelled() }}
+        run: scripts/test-ci.sh ddr-rtl ddr-mpact ddr-host
       - name: Collect fixture results
         run: make results
       - name: Upload verified archives
