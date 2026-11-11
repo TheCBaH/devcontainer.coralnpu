@@ -1,0 +1,15 @@
+diff --git a/toolchain/crt/coralnpu_htif_gloss.cc b/toolchain/crt/coralnpu_htif_gloss.cc
+--- a/toolchain/crt/coralnpu_htif_gloss.cc
++++ b/toolchain/crt/coralnpu_htif_gloss.cc
+@@ -27,8 +27,9 @@ volatile uint64_t tohost_ready
+ volatile uint64_t fromhost_ready
+     __attribute__((section(".htif"), aligned(64), used)) = 0;
+ 
+-long htif_syscall_6args(long n, long a0, long a1, long a2, long a3, long a4,
+-                        long a5) {
++// Widen pointers before a signed RV32 long can sign-extend DDR addresses.
++long htif_syscall_6args(uint64_t n, uint64_t a0, uint64_t a1, uint64_t a2,
++                        uint64_t a3, uint64_t a4, uint64_t a5) {
+   volatile uint64_t buf[8];
+   buf[0] = n;
+   buf[1] = a0;
