@@ -367,7 +367,7 @@ def mpact(executable, revision, ddr=False):
             "generated_parameters": {"vector_byte_length": 16, "initial_misa_value": 0x40201120,
                                      **({"launcher": "scripts/mpact-ddr.sh",
                                          "launcher_sha256": sha256(ROOT / "scripts/mpact-ddr.sh"),
-                                         "allow_memory_region": MPACT_DDR_REGIONS} if ddr else {})},
+                                         "allow_memory_region": ",".join(MPACT_DDR_REGIONS)} if ddr else {})},
         }, revision),
         "simulation": {
             "backend": "mpact",
