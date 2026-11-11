@@ -126,7 +126,10 @@
             "generated_parameters": {
               "type": "object",
               "description": "KP_* values from the elaborated V<module>_parameters.h",
-              "additionalProperties": {"type": ["integer", "boolean", "string"]}
+              "additionalProperties": {
+                "type": ["integer", "boolean", "string", "array"],
+                "items": {"type": "string"}
+              }
             }
           }
         }
