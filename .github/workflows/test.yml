@@ -43,8 +43,28 @@ jobs:
       - name: Collect fixture results
         run: make results
       - name: Upload verified archives
+        id: upload
+        continue-on-error: true
         uses: actions/upload-artifact@v7
         with:
           name: archives-${{ inputs.arch }}
           path: dist/*
           if-no-files-found: error
+      - name: Retry verified archive upload
+        id: upload_retry
+        if: ${{ !cancelled() && steps.upload.outcome == 'failure' }}
+        continue-on-error: true
+        uses: actions/upload-artifact@v7
+        with:
+          name: archives-${{ inputs.arch }}
+          path: dist/*
+          if-no-files-found: error
+          overwrite: true
+      - name: Final verified archive upload attempt
+        if: ${{ !cancelled() && steps.upload_retry.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: archives-${{ inputs.arch }}
+          path: dist/*
+          if-no-files-found: error
+          overwrite: true
